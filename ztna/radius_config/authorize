@@ -1,0 +1,17 @@
+# Default authorize file for FreeRADIUS
+
+DEFAULT Framed-Protocol == PPP
+	Framed-Protocol = PPP,
+	Framed-Compression = Van-Jacobson-TCP-IP
+
+DEFAULT Hint == "CSLIP"
+	Framed-Protocol = SLIP,
+	Framed-Compression = Van-Jacobson-TCP-IP
+
+DEFAULT Hint == "SLIP"
+	Framed-Protocol = SLIP
+
+# BEGIN ANSIBLE MANAGED MAB BLOCK
+# Host 1 MAB Endpoint (Assigning SGT 15)
+001a2b3c4d5e Cleartext-Password := "001a2b3c4d5e"
+    Cisco-AVPair = "cts:security-group-tag=0000-00-000F"

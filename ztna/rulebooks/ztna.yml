@@ -1,0 +1,43 @@
+---
+- name: "ZTNA Webhook Listener"
+  hosts: all
+
+  sources:
+    - ansible.eda.webhook:
+        host: 0.0.0.0
+        port: 5000
+
+  execution_strategy: parallel
+  match_multiple_rules: true
+
+  rules:
+    - name: "Log Authenticated MAB Endpoint"
+      condition: event.payload.status == "MAB_Authenticated"
+      action:
+        debug:
+          msg: |
+            MAB Authentication Received:
+              switch_name: {{ event.payload.switch_name }}
+              switch_ip: {{ event.payload.switch_ip }}
+              mac_address: {{ event.payload.mac_address }}
+              sgt: {{ event.payload.sgt }}
+              mac_interface: {{ event.payload.interface }}
+
+    - name: "Remediate Authenticated MAB Endpoint"
+      condition: event.payload.status == "MAB_Authenticated"
+      throttle:
+          once_within: 30 seconds
+          group_by_attributes:
+            - event.payload.mac_address
+
+      action:
+        run_job_template:
+          name: "ZTNA Remediate"
+          organization: "Red Hat network organization"
+          job_args:
+            extra_vars:
+              switch_name: "{{ event.payload.switch_name }}"
+              switch_ip: "{{ event.payload.switch_ip }}"
+              mac_address: "{{ event.payload.mac_address }}"
+              sgt: "{{ event.payload.sgt }}"
+              mac_interface: "{{ event.payload.interface }}"

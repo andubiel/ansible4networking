@@ -1,0 +1,143 @@
+---
+- name: Configure Catalyst 9k for Zero Trust (MAB, SGT, VLANs)
+  hosts: leaf1
+  gather_facts: no
+
+  tasks:
+    - name: Ensure VLANs Exist
+      cisco.ios.ios_config:
+        lines:
+          - "name {{ item.name }}"
+        parents: "vlan {{ item.id }}"
+      loop: "{{ tenant_vlans }}"
+
+    - name: Configure Interface State and Descriptions (SVIs)
+      cisco.ios.ios_interfaces:
+        config:
+          - name: "Vlan{{ item.id }}"
+            description: "{{ item.desc }}"
+            enabled: true
+        state: merged
+      loop: "{{ tenant_vlans }}"
+      when: item.svi_ip is defined
+
+    - name: Configure Interface State and Descriptions (Access Ports)
+      cisco.ios.ios_interfaces:
+        config:
+          - name: "{{ item.name }}"
+            description: "{{ item.desc }} {{ item.auth_status | default('Unauthenticated') }} MAB Endpoint"
+            enabled: true
+        state: merged
+      loop: "{{ mab_ports }}"
+
+    - name: Configure SVI IP Addresses (L3 Interfaces)
+      cisco.ios.ios_l3_interfaces:
+        config:
+          - name: "Vlan{{ item.id }}"
+            ipv4:
+              - address: "{{ item.svi_ip }}"
+        state: merged
+      loop: "{{ tenant_vlans }}"
+      when: item.svi_ip is defined
+
+    - name: Configure Switchport Access VLANs (L2 Interfaces)
+      cisco.ios.ios_l2_interfaces:
+        config:
+          - name: "{{ item.name }}"
+            mode: access
+            access:
+              vlan: "{{ item.vlan }}"
+        state: merged
+      loop: "{{ mab_ports }}"
+
+    - name: Enable AAA Globally
+      cisco.ios.ios_config:
+        lines:
+          - aaa new-model
+
+    - name: Configure RADIUS Server Definition
+      cisco.ios.ios_config:
+        parents: radius server RADIUS1
+        lines:
+          - address ipv4 {{ radius_server_ip }} auth-port 1812 acct-port 1813
+          - key {{ radius_secret }}
+
+    - name: Configure AAA Group
+      cisco.ios.ios_config:
+        parents: aaa group server radius ZTNA_RADIUS
+        lines:
+          - server name RADIUS1
+
+    - name: Configure RADIUS Uplink Port (Gi1/0/1 in VLAN 40)
+      cisco.ios.ios_config:
+        parents: interface GigabitEthernet1/0/1
+        lines:
+          - switchport mode access
+          - switchport access vlan 40
+          - no shutdown
+
+    - name: Configure RADIUS Source Interface
+      cisco.ios.ios_config:
+        lines:
+          - ip radius source-interface Vlan40
+
+    - name: Apply AAA Authentication Methods
+      cisco.ios.ios_config:
+        lines:
+          # Device Admin (SSH) uses local database
+          - aaa authentication login default local
+          - aaa authorization exec default local
+
+          # Network Access (MAB) uses our new VRF-aware group!
+          - aaa authentication dot1x default group ZTNA_RADIUS
+          - aaa authorization network default group ZTNA_RADIUS
+
+          # Global Security Settings
+          - dot1x system-auth-control
+          - device-tracking tracking
+
+    - name: Enable IP Routing and OSPF
+      cisco.ios.ios_config:
+        lines:
+          - ip routing
+        parents: []
+
+    - name: Configure OSPF
+      cisco.ios.ios_config:
+        parents: router ospf 1
+        lines:
+          - network 10.40.40.0 0.0.0.255 area 0
+          - network 10.50.50.0 0.0.0.255 area 0
+
+    - name: Configure Errdisable Recovery
+      cisco.ios.ios_config:
+        lines:
+          - errdisable recovery cause security-violation
+          - errdisable recovery interval 30
+
+    - name: Enable MAB and PortFast on Access Ports
+      cisco.ios.ios_config:
+        parents: "interface {{ item.name }}"
+        lines:
+          - authentication port-control auto
+          - authentication order mab dot1x
+          - authentication priority mab dot1x
+          - authentication violation restrict
+          - mab
+          - shutdown
+          - no shutdown
+      loop: "{{ mab_ports }}"
+    
+    - name: Configure NTP Servers
+      cisco.ios.ios_ntp_global:
+        config:
+          servers:
+            - server: 192.2.2.1
+              version: 2
+            - server: 192.2.2.2
+              version: 2
+        state: merged
+
+    - name: Save running configuration to startup
+      cisco.ios.ios_config:
+        save_when: modified

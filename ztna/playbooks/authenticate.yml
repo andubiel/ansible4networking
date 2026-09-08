@@ -1,0 +1,33 @@
+---
+- name: Trigger MAB Authentication for Endpoints
+  hosts: leaf1
+  gather_facts: no
+
+  tasks:
+    - name: Clear authentication sessions for authentication testing
+      cisco.ios.ios_command:
+        commands:
+          - clear authentication sessions
+
+    - name: Generate traffic from host1
+      ansible.builtin.command:
+        cmd: docker exec clab-ztna-host1 ping -c 30 10.50.50.1
+      delegate_to: containerlab1
+      ignore_errors: yes
+
+    - name: Verify authentication sessions
+      cisco.ios.ios_command:
+        commands:
+          - show authentication sessions
+      register: auth_sessions
+
+    - name: Display authentication sessions
+      ansible.builtin.debug:
+        var: auth_sessions.stdout_lines
+
+    - name: Verify all sessions are authenticated
+      ansible.builtin.assert:
+        that:
+          - "'Auth' in auth_sessions.stdout[0]"
+        fail_msg: "MAB authentication failed - sessions not authenticated"
+        success_msg: "MAB authentication successful"

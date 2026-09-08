@@ -1,0 +1,5 @@
+exec eda_webhook {
+	wait = no
+	program = "/etc/freeradius/eda_webhook.sh %{NAS-Identifier} %{NAS-IP-Address} %{User-Name} %{reply:Cisco-AVPair} %{NAS-Port-Id}"
+	shell_escape = yes
+}

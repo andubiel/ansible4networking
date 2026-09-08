@@ -1,0 +1,27 @@
+---
+# RADIUS Configuration
+radius_server_ip: "10.40.40.2"
+radius_secret: "Cisco123Secret" # lab-only password
+
+# VLAN and SVI Declarations
+tenant_vlans:
+  - id: 40
+    name: "ZTNA_SERVERS"
+    svi_ip: "10.40.40.1/24"
+    desc: "Gateway for Server Domain"
+  - id: 50
+    name: "ZTNA_USERS"
+    svi_ip: "10.50.50.1/24"
+    desc: "Gateway for MAB Endpoints"
+  - id: 999
+    name: "BLACKHOLE"
+    desc: "Unauthenticated Endpoints"
+
+# Access Port Declarations
+mab_ports:
+  - name: "GigabitEthernet1/0/2"
+    desc: "MAB-Endpoint-Host1"
+    vlan: 999
+  - name: "GigabitEthernet1/0/3"
+    desc: "MAB-Endpoint-Host2"
+    vlan: 999

@@ -1,0 +1,118 @@
+---
+- name: Remediate MAB Endpoint After Authentication
+  hosts: "{{ switch_name }}"
+  gather_facts: no
+
+  vars:
+    target_vlan: 50
+    auth_status: "Authenticated"
+    interface_desc:
+      "GigabitEthernet1/0/2": "MAB-Endpoint-Host1"
+      "GigabitEthernet1/0/3": "MAB-Endpoint-Host2"
+
+  tasks:
+    - name: Create SNOW Ticket
+      servicenow.itsm.incident:
+        instance:
+          host: "{{ SN_HOST }}"
+          username: "{{ SN_USERNAME }}"
+          password: "{{ SN_PASSWORD }}"
+        state: new
+        impact: high
+        urgency: high
+        caller: tdubiel
+        other:
+          caller_id: "6816f79cc0a8016401c5a33be04be441"
+        description: "Open ticket when MAB port is authenticated. MAB Authentication Received:
+                 {{ switch_name }}
+                 {{ switch_ip }}
+                 {{ mac_interface }}
+                 {{ mac_address }}
+                 {{ sgt }}"
+      register: snow_var
+      delegate_to: localhost
+
+    - name: Set incident facts
+      ansible.builtin.set_fact:
+        snow_incident: "{{ snow_var.record }}"
+      delegate_to: localhost
+      delegate_facts: true
+
+    - name: Move Authenticated Port to Users VLAN
+      cisco.ios.ios_l2_interfaces:
+        config:
+          - name: "{{ mac_interface }}"
+            mode: access
+            access:
+              vlan: "{{ target_vlan }}"
+        state: merged
+
+    - name: Update Interface Description
+      cisco.ios.ios_interfaces:
+        config:
+          - name: "{{ mac_interface }}"
+            description: "{{ interface_desc[mac_interface] }} {{ auth_status }} MAB Endpoint"
+            enabled: true
+        state: merged
+
+    - name: Save running configuration to startup
+      cisco.ios.ios_config:
+        save_when: modified
+
+- name: Update NetBox Config Context
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    target_vlan: 50
+    auth_status: "Authenticated"
+
+  tasks:
+    - name: Update MAB ports config context
+      netbox.netbox.netbox_config_context:
+        netbox_url: "{{ netbox_url }}"
+        netbox_token: "{{ netbox_api_key }}"
+        data:
+          name: MAB_PORTS
+          data:
+            mab_ports:
+              - name: "GigabitEthernet1/0/2"
+                desc: "MAB-Endpoint-Host1"
+                vlan: "{{ (mac_interface == 'GigabitEthernet1/0/2') | ternary(target_vlan, 999) }}"
+                auth_status: "{{ (mac_interface == 'GigabitEthernet1/0/2') | ternary(auth_status, 'Unauthenticated') }}"
+              - name: "GigabitEthernet1/0/3"
+                desc: "MAB-Endpoint-Host2"
+                vlan: "{{ (mac_interface == 'GigabitEthernet1/0/3') | ternary(target_vlan, 999) }}"
+                auth_status: "{{ (mac_interface == 'GigabitEthernet1/0/3') | ternary(auth_status, 'Unauthenticated') }}"
+          device_types: cat9kv
+        state: present
+
+    - name: Query MAB_PORTS config context from Netbox
+      ansible.builtin.set_fact:
+        mab_config_context: "{{ query('netbox.netbox.nb_lookup', 'config-contexts',
+          api_filter='name=MAB_PORTS',
+          api_endpoint=netbox_url,
+          token=netbox_api_key) }}"
+      delegate_to: localhost
+
+    - name: Filter to authenticated port
+      ansible.builtin.set_fact:
+        authenticated_port: "{{ mab_config_context[0].value.data.mab_ports | selectattr('name', 'equalto', mac_interface) | first }}"
+
+    - name: Close ticket
+      servicenow.itsm.incident:
+        instance:
+          host: "{{ SN_HOST }}"
+          username: "{{ SN_USERNAME }}"
+          password: "{{ SN_PASSWORD }}"
+        close_code: "Solved (Permanently)"
+        close_notes: " The SSOT configuration for the MAB-Endpoint is updated in Netbox {{ authenticated_port }}"
+        state: closed
+        number: "{{ snow_incident.number }}"
+        short_description: "The incident is closed. The SSOT configuration in Netbox is updated"
+
+    - name: Show incident details
+      ansible.builtin.debug:
+        msg:
+          - "{{ SN_HOST }}"
+          - "Incident {{ snow_incident.number }} closed"

@@ -1,0 +1,6 @@
+exec {
+	wait = yes
+	input_pairs = request
+	shell_escape = yes
+	timeout = 10
+}

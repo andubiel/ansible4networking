@@ -1,0 +1,83 @@
+---
+netbox_url: "http://192.168.122.1:8282"
+site_list:
+  - name: RTP
+    time_zone: America/New_York
+    status: Active
+manufacturers:  # In alphabetical order
+  - Arista
+  - Cisco
+  - Juniper
+ansible_hosts: 
+device_types:
+  - model: c8000v
+    manufacturer: Cisco
+    slug: c8000v
+    part_number: c8000v
+    Full_depth: False
+  - model: cat9kv
+    manufacturer: Cisco
+    slug: cat9kv
+    part_number: cat9kv
+    Full_depth: False
+  - model: vEOS
+    manufacturer: Arista
+    slug: veos
+    part_number: veos
+    Full_depth: False
+  - model: vMX
+    manufacturer: Juniper
+    slug: vmx
+    part_number: vmx
+    Full_depth: False
+platforms:
+  - name: EOS
+    slug: eos
+  - name: IOS
+    slug: ios
+  - name: JUNOS
+    slug: junos
+device_roles:
+  - name: router
+  - name: switch
+cisco_routers:
+  - name: rtr1
+    device_type: C8000V
+    device_role: router
+    site: RTP
+    platform: IOS
+    custom_fields: 
+      ansible_host: "{{ ansible_hosts }}"
+      ansible_port: '2322'
+# Devices
+cisco_switches:
+  - name: "leaf1"
+    device_type: "cat9kv"
+    device_role: "switch"
+    site: "rtp"
+    platform: "IOS"
+    custom_fields:
+      ansible_host: "{{ ansible_hosts }}"
+      ansible_port: '2255'
+  - name: "leaf2"
+    device_type: "cat9kv"
+    device_role: "switch"
+    site: "rtp"
+    platform: "IOS"
+    custom_fields:
+      ansible_host: "{{ ansible_hosts }}"
+      ansible_port: '2330'
+arista_routers:
+  - name: rtr2
+    device_type: vEOS
+    device_role: router
+    site: RTP
+    platform: EOS
+    custom_fields: 
+      ansible_host: "{{ ansible_hosts }}"
+      ansible_port: '2323'
+
+#Webhooks
+webhooks:
+  - name: NTP
+   

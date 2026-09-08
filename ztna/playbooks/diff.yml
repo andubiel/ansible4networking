@@ -1,0 +1,69 @@
+---
+- name: DIFF NTP_IOS config from Netbox SSOT
+  hosts: leaf1
+  gather_facts: false
+  vars:
+    ansible_network_os: cisco.ios.ios
+    ansible_connection: network_cli
+
+  tasks:
+
+    - name: Query NTP_IOS config context from Netbox
+      ansible.builtin.set_fact:
+        ntp_config_context: "{{ query('netbox.netbox.nb_lookup', 'config-contexts',
+          api_filter='name=NTP_IOS',
+          api_endpoint=netbox_url,
+          token=netbox_api_key) }}"
+      delegate_to: localhost
+
+    - name: Set NTP desired config from Netbox
+      ansible.builtin.set_fact:
+        ntp_desired: "{{ ntp_config_context[0].value.data.ntp_ios }}"
+      delegate_to: localhost
+
+    - name: Check/Replace existing NTP for compliance
+      cisco.ios.ios_ntp_global:
+        config: "{{ ntp_desired }}"
+        state: replaced
+      register: ntp_diff
+      check_mode: yes
+
+    - name: Set Facts Before
+      ansible.builtin.set_fact:
+        fact_before: "{{ ntp_diff.before }}"
+      delegate_to: localhost
+
+    - name: Set Facts After
+      ansible.builtin.set_fact:
+        fact_after: "{{ ntp_desired }}"
+      delegate_to: localhost
+      when: ntp_diff.changed == true
+
+    - name: Set Facts After Empty
+      ansible.builtin.set_fact:
+        fact_after: {}
+      delegate_to: localhost
+      when: ntp_diff.changed == false
+
+    - name: Run DIFF check between before and after
+      ansible.utils.fact_diff:
+        before: "{{ ntp_diff.before }}"
+        after: "{{ ntp_desired }}"
+      diff: true
+      delegate_to: localhost
+
+    - name: No NTP DRIFT
+      debug:
+        msg: "No NTP DRIFT found for {{ inventory_hostname }}"
+      when:
+        - after is not defined
+        - ntp_diff.commands == []
+      delegate_to: localhost
+
+    - name: NTP DRIFT
+      ansible.builtin.debug:
+        msg:
+          - "NTP DRIFT found for {{ inventory_hostname }}"
+          - "The following commands need to be applied to {{ inventory_hostname }}"
+          - "{{ ntp_diff.commands | default('no commands') }}"
+      when: ntp_diff.commands != []
