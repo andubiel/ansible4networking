@@ -76,8 +76,4 @@ arista_routers:
     custom_fields: 
       ansible_host: "{{ ansible_hosts }}"
       ansible_port: '2323'
-
-#Webhooks
-webhooks:
-  - name: NTP
    
