@@ -115,3 +115,7 @@ ztna/
 5. **`authenticate.yml`** — (Optional) Trigger MAB authentication from test endpoints
 6. **Automated loop**: endpoint connects → RADIUS authenticates → webhook fires → EDA triggers → AAP remediates → NetBox updated → SNOW ticket closed
 7. **`diff.yml`** — (Optional) Run drift detection against NetBox SSOT
+
+## Return to Demo Menu
+
+- [Menu of Demos](../README.md)
