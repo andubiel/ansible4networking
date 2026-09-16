@@ -23,6 +23,3 @@ These files are from a past meetup demonstrating OpenClaw as an Agentic AI assis
 | `port_security.j2` | Jinja2 template that generates switchport and port-security config with sticky MAC addresses |
 | `port_security_dict.j2` | Jinja2 template variant that generates switchport and port-security config from dictionary-style interface data |
 
-## Next Meetup
-
-Join us **Thursday, June 25th** for an online meetup and demo for using OpenClaw as an Agentic AI assistant to automate Cisco switches with the Ansible Automation Platform.
