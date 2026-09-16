@@ -1,0 +1,8 @@
+{% for port in interfaces %}
+interface {{ port.name }}
+ switchport
+ switchport mode access
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security violation shutdown
+{% endfor %}

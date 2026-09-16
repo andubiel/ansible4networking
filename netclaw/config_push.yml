@@ -1,0 +1,16 @@
+---
+- name: Configuration Push
+  hosts: leaf1
+  gather_facts: false
+
+  tasks: 
+  - name: Debug interfaces variable
+    ansible.builtin.debug:
+      msg: "->{{ item }}<-"
+    loop: "{{ interfaces }}"
+    
+  - name: Push Port Security Configs
+    cisco.ios.config:
+      src: port_security.j2
+
+

@@ -1,0 +1,9 @@
+{% for port in interfaces %}
+interface {{ port | trim }}
+ switchport
+ switchport mode access
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security mac-address sticky
+ switchport port-security violation shutdown
+{% endfor %}
