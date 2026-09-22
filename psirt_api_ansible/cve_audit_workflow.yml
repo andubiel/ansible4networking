@@ -1,0 +1,12 @@
+---
+- name: Gather router configuration and version
+  hosts: cisco
+  gather_facts: false
+  roles:
+    - gather_config
+
+- name: Audit CVEs against running configuration
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - cve_audit

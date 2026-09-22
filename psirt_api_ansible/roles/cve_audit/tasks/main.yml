@@ -1,0 +1,12 @@
+---
+- name: Authenticate to Cisco PSIRT API
+  ansible.builtin.include_tasks: authenticate.yml
+
+- name: Fetch advisories for all routers
+  ansible.builtin.include_tasks: fetch_advisories.yml
+
+- name: Filter advisories by running configuration
+  ansible.builtin.include_tasks: filter_advisories.yml
+
+- name: Generate reports and artifacts
+  ansible.builtin.include_tasks: report.yml

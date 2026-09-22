@@ -1,0 +1,67 @@
+---
+- name: Filter advisories by configuration relevance
+  ansible.builtin.set_fact:
+    filtered_results: "{{ filtered_results | default({}) | combine({host_name: relevant_advisories}) }}"
+    skipped_results: "{{ skipped_results | default({}) | combine({host_name: skipped_advisories}) }}"
+  vars:
+    host_name: "{{ item.key }}"
+    router_config: "{{ hostvars[item.key].running_config.stdout[0] | lower }}"
+    relevant_advisories: >-
+      {%- set results = [] -%}
+      {%- for adv in item.value -%}
+        {%- set title_lower = adv.advisoryTitle | lower -%}
+        {%- set products_lower = adv.productNames | join(' ') | lower -%}
+        {%- set search_text = title_lower ~ ' ' ~ products_lower -%}
+        {%- set has_feature_match = [] -%}
+        {%- set feature_checked = [] -%}
+        {%- set matched_feature = [] -%}
+        {%- for feat_name, feat in feature_dictionary.items() -%}
+          {%- for term in feat.search_terms -%}
+            {%- if term in search_text -%}
+              {%- if feature_checked.append(feat_name) -%}{%- endif -%}
+              {%- for cmd in feat.config_commands -%}
+                {%- if cmd | lower in router_config -%}
+                  {%- if has_feature_match.append(true) -%}{%- endif -%}
+                  {%- if matched_feature.append(feat_name) -%}{%- endif -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endfor -%}
+        {%- if feature_checked | length == 0 -%}
+          {%- if results.append(adv | combine({'match_reason': 'No config filter available - review manually'})) -%}{%- endif -%}
+        {%- elif has_feature_match | length > 0 -%}
+          {%- if results.append(adv | combine({'match_reason': 'Feature configured: ' ~ matched_feature | unique | join(', ')})) -%}{%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ results }}
+    skipped_advisories: >-
+      {%- set results = [] -%}
+      {%- for adv in item.value -%}
+        {%- set title_lower = adv.advisoryTitle | lower -%}
+        {%- set products_lower = adv.productNames | join(' ') | lower -%}
+        {%- set search_text = title_lower ~ ' ' ~ products_lower -%}
+        {%- set has_feature_match = [] -%}
+        {%- set feature_checked = [] -%}
+        {%- set checked_feature = [] -%}
+        {%- for feat_name, feat in feature_dictionary.items() -%}
+          {%- for term in feat.search_terms -%}
+            {%- if term in search_text -%}
+              {%- if feature_checked.append(true) -%}{%- endif -%}
+              {%- if checked_feature.append(feat_name) -%}{%- endif -%}
+              {%- for cmd in feat.config_commands -%}
+                {%- if cmd | lower in router_config -%}
+                  {%- if has_feature_match.append(true) -%}{%- endif -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endfor -%}
+        {%- if feature_checked | length > 0 and has_feature_match | length == 0 -%}
+          {%- if results.append(adv | combine({'skip_reason': 'Feature not configured: ' ~ checked_feature | unique | join(', ')})) -%}{%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ results }}
+  loop: "{{ audit_results | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"

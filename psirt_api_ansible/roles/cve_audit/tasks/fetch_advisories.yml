@@ -1,0 +1,37 @@
+---
+- name: Fetch Security Advisories for each router
+  ansible.builtin.uri:
+    url: "https://apix.cisco.com/security/advisories/v2/OSType/{{ os_type }}?version={{ hostvars[item].ios_version }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ token_response.json.access_token }}"
+      Accept: "application/json"
+    return_content: true
+    status_code: [200, 404]
+  register: vuln_responses
+  loop: "{{ groups['cisco'] }}"
+  loop_control:
+    label: "{{ item }} ({{ hostvars[item].ios_version }})"
+
+- name: Build advisory list with productNames from API response
+  ansible.builtin.set_fact:
+    audit_results: "{{ audit_results | default({}) | combine({item.item: host_results}) }}"
+  vars:
+    advisories: "{{ item.json.advisories | default([]) }}"
+    host_results: >-
+      {%- set results = [] -%}
+      {%- for adv in advisories -%}
+        {%- if results.append({
+          'advisoryId': adv.advisoryId,
+          'advisoryTitle': adv.advisoryTitle,
+          'severity': adv.sir,
+          'cves': adv.cves,
+          'productNames': adv.productNames | default([]),
+          'firstFixed': adv.firstFixed | default([])
+        }) -%}{%- endif -%}
+      {%- endfor -%}
+      {{ results }}
+  loop: "{{ vuln_responses.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.status == 200

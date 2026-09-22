@@ -1,0 +1,191 @@
+---
+- name: Display RELEVANT CVEs per router
+  ansible.builtin.debug:
+    msg: |
+      ===== {{ item.key }} ({{ hostvars[item.key].ios_version }}) - RELEVANT =====
+      Total advisories for this version: {{ (audit_results[item.key] | default([])) | length }}
+      Relevant to running config: {{ item.value | length }}
+      {% for adv in item.value %}
+      - [{{ adv.severity }}] {{ adv.advisoryTitle }}
+        CVEs: {{ adv.cves | join(', ') }}
+        First Fixed: {{ adv.firstFixed | default('N/A') }}
+        Reason: {{ adv.match_reason }}
+      {% endfor %}
+  loop: "{{ filtered_results | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Display SKIPPED CVEs (feature not configured)
+  ansible.builtin.debug:
+    msg: |
+      ===== {{ item.key }} - SKIPPED (feature not configured) =====
+      {% for adv in item.value %}
+      - [{{ adv.severity }}] {{ adv.advisoryTitle }}
+        {{ adv.skip_reason }}
+      {% endfor %}
+  loop: "{{ skipped_results | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: item.value | length > 0
+
+- name: Recommend minimum safe IOS-XE version
+  ansible.builtin.debug:
+    msg: |
+      ===== {{ item.key }} (current: {{ hostvars[item.key].ios_version }}) - UPGRADE RECOMMENDATION =====
+      {{ recommendation }}
+  vars:
+    current_major: "{{ hostvars[item.key].ios_version.split('.')[0] }}"
+    fixed_versions: >-
+      {%- set versions = [] -%}
+      {%- for adv in item.value -%}
+        {%- set fv = adv.firstFixed | default([]) -%}
+        {%- set fv_list = fv if fv is iterable and fv is not string else [fv] -%}
+        {%- for ver in fv_list -%}
+          {%- if ver and ver is string and ver.startswith(current_major ~ '.') and ver not in versions -%}
+            {%- if versions.append(ver) -%}{%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ versions }}
+    recommended_version: >-
+      {%- set best = [] -%}
+      {%- for ver in fixed_versions -%}
+        {%- if best | length == 0 or ver is version(best[-1], '>') -%}
+          {%- if best.append(ver) -%}{%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ best[-1] | default('') }}
+    recommendation: >-
+      {%- if recommended_version -%}
+      Recommended minimum version: {{ recommended_version }}
+      (resolves all {{ item.value | length }} relevant CVEs on the {{ current_major }}.x train)
+
+      All firstFixed versions found: {{ fixed_versions | sort | join(', ') }}
+      {%- else -%}
+      No firstFixed version data available from the API for the {{ current_major }}.x train.
+      Check individual advisories on cisco.com for upgrade guidance.
+      {%- endif -%}
+  loop: "{{ filtered_results | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Build workflow artifacts per router
+  ansible.builtin.set_fact:
+    cve_audit_artifacts: "{{ cve_audit_artifacts | default({}) | combine({item.key: host_artifact}) }}"
+  vars:
+    current_major: "{{ hostvars[item.key].ios_version.split('.')[0] }}"
+    fixed_versions: >-
+      {%- set versions = [] -%}
+      {%- for adv in filtered_results[item.key] | default([]) -%}
+        {%- set fv = adv.firstFixed | default([]) -%}
+        {%- set fv_list = fv if fv is iterable and fv is not string else [fv] -%}
+        {%- for ver in fv_list -%}
+          {%- if ver and ver is string and ver.startswith(current_major ~ '.') and ver not in versions -%}
+            {%- if versions.append(ver) -%}{%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ versions }}
+    recommended_version: >-
+      {%- set best = [] -%}
+      {%- for ver in fixed_versions -%}
+        {%- if best | length == 0 or ver is version(best[-1], '>') -%}
+          {%- if best.append(ver) -%}{%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ best[-1] | default('') }}
+    host_artifact:
+      hostname: "{{ item.key }}"
+      current_version: "{{ hostvars[item.key].ios_version }}"
+      total_advisories: "{{ (audit_results[item.key] | default([])) | length }}"
+      relevant_cve_count: "{{ (filtered_results[item.key] | default([])) | length }}"
+      skipped_cve_count: "{{ (skipped_results[item.key] | default([])) | length }}"
+      recommended_version: "{{ recommended_version }}"
+      relevant_cves: >-
+        {%- set cves = [] -%}
+        {%- for adv in filtered_results[item.key] | default([]) -%}
+          {%- if cves.append({
+            'id': adv.advisoryId,
+            'title': adv.advisoryTitle,
+            'severity': adv.severity,
+            'cves': adv.cves,
+            'firstFixed': adv.firstFixed | default(''),
+            'reason': adv.match_reason
+          }) -%}{%- endif -%}
+        {%- endfor -%}
+        {{ cves }}
+  loop: "{{ audit_results | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Retrieve repository from Gitea
+  ansible.scm.git_retrieve:
+    origin:
+      url: "{{ gitea_repo_url }}"
+    parent_directory: "{{ gitea_clone_dir }}"
+    branch:
+      name: "{{ gitea_branch }}"
+      duplicate_detection: false
+  register: repository
+  delegate_to: localhost
+  run_once: true
+
+- name: Create report directory in repository
+  ansible.builtin.file:
+    path: "{{ repository['path'] }}/cve_discovery/reports"
+    state: directory
+    mode: "0755"
+
+- name: Write JSON report per router to repository
+  ansible.builtin.copy:
+    content: "{{ cve_audit_artifacts[item.key] | to_nice_json }}"
+    dest: "{{ repository['path'] }}/cve_discovery/reports/{{ item.key }}_cve_audit.json"
+    mode: "0644"
+  loop: "{{ cve_audit_artifacts | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Publish reports to Gitea
+  ansible.scm.git_publish:
+    path: "{{ repository['path'] }}"
+    token: "{{ password }}"
+    user:
+      name: "{{ username }}"
+      email: "{{ email }}"
+  delegate_to: localhost
+  run_once: true
+
+- name: Set artifacts for AAP workflow
+  ansible.builtin.set_stats:
+    data:
+      cve_audit_summary: "{{ summary }}"
+  vars:
+    summary: >-
+      {%- set results = [] -%}
+      {%- for host, data in cve_audit_artifacts.items() -%}
+        {%- if results.append({
+          'hostname': host,
+          'current_version': data.current_version,
+          'relevant_cve_count': data.relevant_cve_count,
+          'skipped_cve_count': data.skipped_cve_count,
+          'recommended_version': data.recommended_version,
+          'report_file': 'cve_discovery/reports/' ~ host ~ '_cve_audit.json'
+        }) -%}{%- endif -%}
+      {%- endfor -%}
+      {{ results }}
+
+- name: Display artifact summary
+  ansible.builtin.debug:
+    msg: |
+      ===== WORKFLOW ARTIFACTS =====
+      Reports published to Gitea: cve_discovery/reports/
+      {% for host, data in cve_audit_artifacts.items() %}
+      {{ host }}:
+        Current version: {{ data.current_version }}
+        Relevant CVEs: {{ data.relevant_cve_count }}
+        Skipped CVEs: {{ data.skipped_cve_count }}
+        Recommended version: {{ data.recommended_version | default('N/A') }}
+        Report: cve_discovery/reports/{{ host }}_cve_audit.json
+      {% endfor %}
+
+      Artifacts are available via set_stats for downstream AAP workflow nodes.

@@ -1,0 +1,141 @@
+---
+client_id: "{{ client_id }}"
+client_secret: "{{ client_secret }}"
+os_type: iosxe
+
+report_dir: /tmp/cve_audit_reports
+
+gitea_repo_url: "http://gitea:{{ password }}@aap:3000/gitea/network-demos-repo.git"
+gitea_branch: master
+gitea_clone_dir: /tmp/
+
+feature_dictionary:
+  nat:
+    search_terms: ["network address translation", "nat"]
+    config_commands: ["ip nat"]
+  zone_firewall:
+    search_terms: ["zone-based firewall", "zbfw", "zone-based policy"]
+    config_commands: ["zone-pair security", "zone security"]
+  iox:
+    search_terms: ["iox", "ioxe"]
+    config_commands: ["iox"]
+  restconf:
+    search_terms: ["restconf"]
+    config_commands: ["restconf"]
+  netconf:
+    search_terms: ["netconf"]
+    config_commands: ["netconf-yang", "netconf ssh"]
+  web_ui:
+    search_terms: ["web management", "web ui", "webui", "web-based", "http server", "web services", "http api"]
+    config_commands: ["ip http server", "ip http secure-server"]
+  snmp:
+    search_terms: ["snmp", "simple network management"]
+    config_commands: ["snmp-server"]
+  telnet:
+    search_terms: ["telnet"]
+    config_commands: ["transport input telnet", "line vty"]
+  wireless:
+    search_terms: ["wireless controller", "capwap", "ewlc", "catalyst 9000", "wireless lan", "wlc"]
+    config_commands: ["wireless", "ap group", "wlan"]
+  dns:
+    search_terms: ["split dns", "dns"]
+    config_commands: ["ip dns server", "ip name-server"]
+  ipsec:
+    search_terms: ["ipsec", "ikev2", "ikev1", "isakmp", "internet key exchange", "crypto tunnel", "flexvpn", "getvpn", "dmvpn"]
+    config_commands: ["crypto ikev2", "crypto isakmp", "crypto map"]
+  ssh:
+    search_terms: ["ssh"]
+    config_commands: ["ip ssh"]
+  aaa:
+    search_terms: ["aaa", "authentication", "authorization", "tacacs", "radius"]
+    config_commands: ["aaa new-model", "aaa authentication", "tacacs server", "radius server"]
+  sla:
+    search_terms: ["ip service level agreement", "ip sla", "ipsla"]
+    config_commands: ["ip sla"]
+  bgp:
+    search_terms: ["bgp", "border gateway"]
+    config_commands: ["router bgp"]
+  ospf:
+    search_terms: ["ospf"]
+    config_commands: ["router ospf"]
+  eigrp:
+    search_terms: ["eigrp"]
+    config_commands: ["router eigrp"]
+  mpls:
+    search_terms: ["mpls", "label switching"]
+    config_commands: ["mpls ip", "mpls ldp"]
+  multicast:
+    search_terms: ["multicast", "igmp", "pim"]
+    config_commands: ["ip multicast-routing", "ip pim", "ip igmp"]
+  qos:
+    search_terms: ["qos", "quality of service", "class-map", "policy-map"]
+    config_commands: ["policy-map", "class-map"]
+  vlan:
+    search_terms: ["vlan", "dot1q", "802.1q", "trunk"]
+    config_commands: ["vlan ", "switchport mode trunk"]
+  dhcp:
+    search_terms: ["dhcp"]
+    config_commands: ["ip dhcp pool", "ip dhcp snooping"]
+  ntp:
+    search_terms: ["ntp"]
+    config_commands: ["ntp server", "ntp peer"]
+  acl:
+    search_terms: ["access control list", "access-list", " acl"]
+    config_commands: ["ip access-list", "access-list"]
+  dot1x:
+    search_terms: ["dot1x", "802.1x"]
+    config_commands: ["dot1x"]
+  privilege_escalation:
+    search_terms: ["privilege escalation", "privilege level"]
+    config_commands: ["privilege exec", "enable secret", "username"]
+  scp:
+    search_terms: ["scp", "secure copy"]
+    config_commands: ["ip scp server enable"]
+  service_module:
+    search_terms: ["sm-1t3", "service module", "sm-x"]
+    config_commands: ["controller"]
+  sdwan:
+    search_terms: ["sd-wan", "sdwan", "vmanage"]
+    config_commands: ["sdwan"]
+  lisp:
+    search_terms: ["lisp", "locator"]
+    config_commands: ["router lisp"]
+  isis:
+    search_terms: ["is-is", "isis"]
+    config_commands: ["router isis"]
+  ethernet:
+    search_terms: ["ethernet frame", "layer 2", "l2 frame"]
+    config_commands: ["interface gigabitethernet", "interface tengigabitethernet", "interface fastethernet"]
+  tls:
+    search_terms: ["tls", "transport layer security"]
+    config_commands: ["ip http secure-server", "crypto pki"]
+  nbar:
+    search_terms: ["nbar", "network-based application recognition"]
+    config_commands: ["ip nbar"]
+  rsvp:
+    search_terms: ["rsvp", "resource reservation"]
+    config_commands: ["ip rsvp"]
+  twamp:
+    search_terms: ["twamp", "two-way active measurement"]
+    config_commands: ["ip sla responder", "performance monitor"]
+  sd_access:
+    search_terms: ["sd-access", "sdaccess", "fabric edge"]
+    config_commands: ["cts", "vxlan", "fabric"]
+  xmcp:
+    search_terms: ["xmcp", "extensible messaging"]
+    config_commands: ["telephony-service", "voice service"]
+  beep:
+    search_terms: ["beep", "blocks extensible exchange"]
+    config_commands: ["netconf-yang", "crypto pki trustpoint"]
+  secure_boot:
+    search_terms: ["secure boot"]
+    config_commands: ["secure boot-config", "boot"]
+  cli_access:
+    search_terms: ["cli denial", "cli argument", "cli command injection"]
+    config_commands: ["line con", "line vty"]
+  bootstrap_pnp:
+    search_terms: ["bootstrap", "plug-and-play", "plug and play"]
+    config_commands: ["pnp"]
+  hardening:
+    search_terms: ["security hardening"]
+    config_commands: ["service password-encryption", "enable secret"]
