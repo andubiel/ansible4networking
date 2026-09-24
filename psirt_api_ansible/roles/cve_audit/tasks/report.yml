@@ -96,6 +96,7 @@
       {{ best[-1] | default('') }}
     host_artifact:
       hostname: "{{ item.key }}"
+      audit_timestamp: "{{ now(utc=true) | string }}"
       current_version: "{{ hostvars[item.key].ios_version }}"
       total_advisories: "{{ (audit_results[item.key] | default([])) | length }}"
       relevant_cve_count: "{{ (filtered_results[item.key] | default([])) | length }}"
