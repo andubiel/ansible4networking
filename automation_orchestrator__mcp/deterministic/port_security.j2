@@ -1,0 +1,9 @@
+{% for port in interfaces %}
+interface {{ port | trim }}
+ switchport mode access
+{% if vlan is defined %}
+ switchport access vlan {{ vlan }}
+{% endif %}
+ switchport port-security
+ switchport port-security mac-address sticky
+{% endfor %}

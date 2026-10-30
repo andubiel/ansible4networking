@@ -1,0 +1,248 @@
+---
+# Bring a new containerlab Catalyst switch into the Splunk pipeline and start it
+# from a compliant configuration.
+#
+# Splunk itself is assumed to be set up already (splunk/setup_splunk.yml, the
+# 'Network | setup splunk' job template). This playbook only touches the
+# devices, then checks Splunk is hearing from them. Run it through the
+# 'Splunk | Setup Devices' job template after a 'containerlab redeploy', or
+# limit it to the new switch.
+#
+# Order matters:
+#
+#   1. The compliance roles (logging, ntp, snmp, stig-ios), the same ones the
+#      'EDA | Continuous Compliance' job enforces, so a later config change is
+#      judged against a device that started out compliant. The Splunk syslog
+#      host is part of the logging role's baseline - see
+#      extensions/eda/roles/logging/vars/main.yml for why.
+#   2. Config-change logging and the extra syslog the Cisco Catalyst app
+#      dashboards are built on.
+#   3. One save, and only if something above changed the device.
+#
+# Everything this play configures is itself logged as a CLI change, so the
+# Splunk alert fires and 'EDA | Continuous Compliance' runs against the new
+# switch about a minute later. That run finds nothing to fix, because step 1
+# already applied the same baseline.
+
+- name: Configure the Catalyst switches for Splunk and compliance
+  hosts: catalyst_switches
+  gather_facts: false
+
+  vars:
+    syslog_dst: "{{ splunk_syslog_dst | default('172.20.20.1') }}"
+    # Read by the compliance roles. The roles' own save handler is left off
+    # (save: no) and the play saves once at the end instead.
+    save: no
+    ignore_all_errors: false
+
+  tasks:
+    # Running-config carries this line and IOS rewrites it on every config
+    # change, so comparing it before and after tells whether to save without
+    # tracking the result of every task in four roles.
+    - name: Note when the configuration last changed
+      cisco.ios.command:
+        commands: "show running-config | include ^! Last configuration change"
+      register: config_marker_before
+
+    # The roles name the area they enforce as 'tag' when they record their
+    # findings, so the loop variable has to keep that name.
+    - name: Apply the compliance baseline
+      ansible.builtin.include_role:
+        name: "../extensions/eda/roles/{{ tag }}"
+      loop:
+        - logging
+        - ntp
+        - snmp
+        - stig-ios
+      loop_control:
+        loop_var: tag
+
+    # 'logging trap informational' is not asserted from running-config: it is
+    # the IOS default and does not appear there. show logging reports it.
+    - name: Read back the syslog destinations
+      cisco.ios.command:
+        commands: "show logging | include Trap logging|{{ syslog_dst }}"
+      register: logging_state
+
+    - name: Check the switch is sending syslog to Splunk
+      ansible.builtin.assert:
+        that:
+          - logging_state.stdout[0] is search('Trap logging: level informational')
+          - logging_state.stdout[0] is search('Logging to ' ~ (syslog_dst | regex_escape))
+        fail_msg: >-
+          {{ inventory_hostname }} is not sending informational syslog to
+          {{ syslog_dst }}. Check the hosts and trap level in
+          extensions/eda/roles/logging/vars/main.yml.
+        success_msg: "Sending informational syslog to {{ syslog_dst }}"
+
+    - name: Timestamp syslog the way the Splunk parsing expects
+      cisco.ios.config:
+        lines:
+          - "service timestamps log datetime msec localtime show-timezone"
+
+    # Emits %PARSER-5-CFGLOG_LOGGEDCMD with the user and the exact command for
+    # every configuration line entered, which is what the Splunk alert and the
+    # continuous compliance chain run on. 'notify syslog' is written back as
+    # 'notify syslog contenttype plaintext', so the long form is enforced.
+    - name: Log every CLI configuration change to syslog
+      cisco.ios.config:
+        parents:
+          - archive
+          - log config
+        lines:
+          - "logging enable"
+          - "logging size 200"
+          - "notify syslog contenttype plaintext"
+
+    - name: Read back the config logger settings
+      cisco.ios.command:
+        commands: "show running-config all | section log config"
+      register: config_logger_state
+
+    # hidekeys is the default and invisible in plain running-config, so it is
+    # checked rather than enforced. Without it, a config line holding a
+    # password would reach Splunk in clear text.
+    - name: Check passwords are masked in the logged commands
+      ansible.builtin.assert:
+        that:
+          - "'hidekeys' in config_logger_state.stdout[0]"
+          - "'no hidekeys' not in config_logger_state.stdout[0]"
+        fail_msg: >-
+          hidekeys is not active on {{ inventory_hostname }}, so configuration
+          commands containing passwords would reach Splunk in clear text. Set
+          'hidekeys' under archive / log config.
+        success_msg: "Config change logging on, passwords masked by hidekeys"
+
+    # What the Cisco Catalyst app dashboards (cisco_ios_overview, _audit,
+    # _switching) are built on, beyond the config changes above:
+    #   login on-success / on-failure  %SEC_LOGIN-5-LOGIN_SUCCESS / -4-LOGIN_FAILED
+    #   spanning-tree logging          %SPANTREE-*
+    # The rest of what they chart is already on by default on this image:
+    # link up/down (logging event link-status on every interface), reload and
+    # restart, and %SYS-5-CONFIG_I.
+    - name: Log the events the Cisco Catalyst app dashboards chart
+      cisco.ios.config:
+        lines:
+          - "login on-success log"
+          - "login on-failure log"
+          - "spanning-tree logging"
+
+    # 'changed' rather than 'modified' would not help here: the cat9kv keeps
+    # self-signed certificate material in running-config that never matches
+    # startup, so it always looks modified. Compare the marker instead.
+    - name: Note when the configuration last changed, again
+      cisco.ios.command:
+        commands: "show running-config | include ^! Last configuration change"
+      register: config_marker_after
+
+    - name: Save the configuration
+      when: config_marker_after.stdout[0] != config_marker_before.stdout[0]
+      cisco.ios.command:
+        commands: "write memory"
+      changed_when: true
+
+    - name: Emit a test event so there is something to find
+      cisco.ios.command:
+        commands: 'send log 6 "SPLUNK-SETUP-VERIFY from {{ inventory_hostname }}"'
+
+  handlers:
+    # Notified by the compliance roles; the continuous compliance playbook
+    # defines the same three.
+    - name: NTP compliance violation
+      ansible.builtin.debug:
+        msg: "NTP brought into compliance on {{ inventory_hostname }}"
+
+    - name: Logging compliance violation
+      ansible.builtin.debug:
+        msg: "Logging brought into compliance on {{ inventory_hostname }}"
+
+    - name: SNMP compliance violation
+      ansible.builtin.debug:
+        msg: "SNMP brought into compliance on {{ inventory_hostname }}"
+
+- name: Confirm Splunk is receiving from the switches
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    splunk_mgmt_host: "{{ SPLUNK_HOST | default('172.16.0.5') }}"
+    splunk_mgmt_port: "{{ SPLUNK_MGMT_PORT | default('18089') }}"
+    splunk_user: "{{ SPLUNK_USERNAME | default('admin') }}"
+    splunk_api: "https://{{ splunk_mgmt_host }}:{{ splunk_mgmt_port }}"
+    syslog_index: "{{ splunk_syslog_index | default('cisco_ios') }}"
+    # Only the switches this run touched, so a job limited to one new device
+    # does not wait on the others.
+    expected_devices: >-
+      {{ groups['catalyst_switches'] | default([])
+         | intersect(query('ansible.builtin.inventory_hostnames', ansible_limit | default('all'))) }}
+
+  tasks:
+    - name: Check the Splunk password was supplied
+      ansible.builtin.assert:
+        that:
+          - SPLUNK_PASSWORD is defined
+          - SPLUNK_PASSWORD | length > 0
+        fail_msg: >-
+          No Splunk password supplied - attach the 'splunk' credential to the
+          job template, or pass SPLUNK_PASSWORD as an extra var.
+
+    # Syslog is fire and forget, so poll rather than assuming it has landed.
+    # Keyed on the inventory name carried in the test event rather than on
+    # Splunk's host field, which comes from the IOS hostname (Leaf1, not
+    # leaf1). The host field is still reported, as a check that the index-time
+    # host extraction is working.
+    #
+    # A block, because running out of retries fails the task whatever
+    # failed_when says, and the rescue is the only place to explain why.
+    - name: Wait for the test event from every switch
+      block:
+        - name: Search Splunk for the test events
+          ansible.builtin.uri:
+            url: "{{ splunk_api }}/services/search/jobs"
+            method: POST
+            user: "{{ splunk_user }}"
+            password: "{{ SPLUNK_PASSWORD }}"
+            force_basic_auth: true
+            validate_certs: false
+            body_format: form-urlencoded
+            body:
+              search: >-
+                search index={{ syslog_index }} earliest=-15m "SPLUNK-SETUP-VERIFY from"
+                | rex "SPLUNK-SETUP-VERIFY from (?<device>[^\s\"]+)"
+                | stats latest(host) as host by device
+              exec_mode: oneshot
+              output_mode: json
+            return_content: true
+            status_code: [200]
+          register: splunk_search
+          until: >-
+            expected_devices | difference(splunk_search.json.results | default([])
+            | map(attribute='device') | list) | length == 0
+          retries: 18
+          delay: 10
+
+      rescue:
+        - name: Explain which switches are missing
+          vars:
+            missing: >-
+              {{ expected_devices | difference(splunk_search.json.results | default([])
+                 | map(attribute='device') | list) }}
+          ansible.builtin.fail:
+            msg: >-
+              {% if splunk_search.status | default(0) != 200 %}
+              The Splunk search failed with HTTP {{ splunk_search.status | default('n/a') }}:
+              {{ splunk_search.msg | default('') }}
+              {% else %}
+              Splunk has nothing from {{ missing | join(', ') }}. Check the
+              switch can reach {{ splunk_syslog_dst | default('172.20.20.1') }}
+              in its management VRF, and that the UDP input exists (run
+              'Network | setup splunk').
+              {% endif %}
+
+    - name: Report what Splunk has received
+      ansible.builtin.debug:
+        msg: "{{ item.device }}: arriving in index '{{ syslog_index }}' as host {{ item.host }}"
+      loop: "{{ splunk_search.json.results | selectattr('device', 'in', expected_devices) | list }}"
+      loop_control:
+        label: "{{ item.device }}"

@@ -1,0 +1,22 @@
+---
+- name: Configuration Push
+  hosts: "{{ _hosts }}"
+  gather_facts: false
+
+  tasks: 
+  - name: Debug interfaces variable
+    ansible.builtin.debug:
+      msg: "->{{ item }}<-"
+    loop: "{{ interfaces }}"
+    
+  - name: Ensure VLAN exists
+    cisco.ios.vlans:
+      config:
+      - vlan_id: "{{ vlan }}"
+        name: "{{ vlan_name | default('VLAN' ~ vlan) }}"
+      state: merged
+    when: vlan is defined
+
+  - name: Push Port Security Configs
+    cisco.ios.config:
+      src: port_security.j2

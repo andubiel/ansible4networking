@@ -1,0 +1,329 @@
+{
+  "name": "port-security-workflow",
+  "edges": [
+    {
+      "to": "remediate_ports",
+      "from": "review_ports",
+      "from_port": "approved"
+    },
+    {
+      "to": "report_unremediated",
+      "from": "review_ports",
+      "from_port": "rejected"
+    },
+    {
+      "to": "open_incident",
+      "from": "activity_57171dcc_83df_4d87_8a51_31befaae7f2d"
+    },
+    {
+      "to": "activity_2d800174_e4a5_4919_83f3_5495b00ba78c",
+      "from": "open_incident"
+    },
+    {
+      "to": "display_port_security",
+      "from": "remediate_ports"
+    },
+    {
+      "to": "close_incident",
+      "from": "display_port_security"
+    },
+    {
+      "to": "logic_1793036906210_us7p71yf2dnm",
+      "from": "activity_2d800174_e4a5_4919_83f3_5495b00ba78c"
+    },
+    {
+      "to": "review_ports",
+      "from": "logic_1793036906210_us7p71yf2dnm",
+      "from_port": "true"
+    },
+    {
+      "to": "close_incident_compliant",
+      "from": "logic_1793036906210_us7p71yf2dnm",
+      "from_port": "false"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "open_incident",
+      "name": "SNOW | Open Incident",
+      "type": "aap_job_template",
+      "position": {
+        "x": -63.620080965577145,
+        "y": -445.71084190611765
+      },
+      "parameters": {
+        "extra_vars": {
+          "snow_description": "Port Security Compliance Check for: ${trigger.device_name}"
+        },
+        "credential_id": "73145f12-9396-4252-8e5c-8491cab1f1a2",
+        "integration_id": "3266d9ab-a707-43e1-b89b-d74c6b3170d2",
+        "job_template_name": "SNOW | Open Incident",
+        "organization_name": "Network"
+      }
+    },
+    {
+      "id": "activity_2d800174_e4a5_4919_83f3_5495b00ba78c",
+      "name": "Restconf MCP - Find which switch ports do not have port security  enabled for (device_name)",
+      "type": "agentic",
+      "position": {
+        "x": 218.4469993598753,
+        "y": -287.34147705436203
+      },
+      "settings": {
+        "timeout": 600
+      },
+      "parameters": {
+        "prompt": "Task: report the ports on ${trigger.device_name} that are not configured for port security.\n\nCall find_unsecured_ports(device_name=\"${trigger.device_name}\") exactly ONCE, then return your final answer immediately. Do not call it again to confirm -- its result is complete and already parsed (unsecured_ports, secured_ports, skipped, checked). Do not call get_restconf_data for this task.\n\nReturn the response_schema JSON as your final answer -- not as text before another tool call:\n- Success: status \"success\", interfaces = unsecured_ports exactly as returned. An empty list is a valid success -- every port is already secured.\n- Tool error: retry once only if the error looks transient; otherwise status \"failed\", the error text in error, interfaces empty. Never invent interface names.\n- details: one short sentence summarising the result.\n\nOnly if you were explicitly asked for something beyond port security, use get_restconf_data(device_name, yang_path, fields, depth) with a fields projection, and put that answer in details.",
+        "llm_model_id": "51db1d72-0d4c-4f08-857f-4eebac76989e",
+        "credential_id": "91c9230e-5fb0-4465-b0f3-cce14fe9232d",
+        "response_schema": {
+          "type": "object",
+          "required": [
+            "status",
+            "interfaces"
+          ],
+          "properties": {
+            "error": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "success",
+                "failed"
+              ],
+              "type": "string"
+            },
+            "details": {
+              "type": "string",
+              "description": "Free-form answer for anything outside the port-security list"
+            },
+            "interfaces": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "tool_selections": [
+          "55a4ca5b-3740-485c-b3b4-5a6537382046",
+          "3a19ab77-c1bb-40db-b793-8f6fc6777379"
+        ],
+        "integration_connections": [
+          {
+            "credential_id": "14097243-f245-450f-971c-004cb844f095",
+            "integration_id": "60f8a206-f4ff-46e1-a7f4-1215e1a02000"
+          }
+        ],
+        "tool_selection_strategy": "SELECTED"
+      }
+    },
+    {
+      "id": "logic_1793036906210_us7p71yf2dnm",
+      "name": "Condition - (True)  Fix Port Security | Else (False) Already Compliant",
+      "type": "condition",
+      "position": {
+        "x": 642.7210375377613,
+        "y": -214.08970720701856
+      },
+      "parameters": {
+        "condition": "(${activity_2d800174_e4a5_4919_83f3_5495b00ba78c.result.content.interfaces} lengthGreaterThan 0 or not (${activity_2d800174_e4a5_4919_83f3_5495b00ba78c.result.content.status} == \"success\"))"
+      }
+    },
+    {
+      "id": "remediate_ports",
+      "name": "Launch NETWORK | Port Security (AAP MCP)",
+      "type": "agentic",
+      "position": {
+        "x": 1034.3730275436535,
+        "y": -634.5803475821423
+      },
+      "settings": {
+        "timeout": 900
+      },
+      "parameters": {
+        "prompt": "You are remediating switch port security on ${trigger.device_name} via Ansible Automation Platform. A human approver has authorised this.\n\nPorts to configure (use exactly this list, do not invent or omit any):\n${activity_2d800174_e4a5_4919_83f3_5495b00ba78c.result.content.interfaces}\n\nSteps:\n1. Call job_templates_launch_create with id 159 (the \"NETWORK | Port Security\" job template) and requestBody:\n   {\"extra_vars\": {\"_hosts\": \"${trigger.device_name}\", \"interfaces\": [<one string per port from the list above>]}}\n   The playbook reads _hosts and interfaces; both are required.\n2. Take the launched job id from the response. Call jobs_retrieve once with that id to read its status.\n\nOutput:\n- Launched: status \"success\", job_id as a string, message naming the template, the device and how many ports were submitted.\n- The launch call errored: status \"failed\", job_id \"\", message containing the error. Do not retry more than once.\n- If the port list above is empty, do not launch anything: status \"success\", job_id \"\", message explaining there was nothing to remediate.",
+        "llm_model_id": "51db1d72-0d4c-4f08-857f-4eebac76989e",
+        "credential_id": "91c9230e-5fb0-4465-b0f3-cce14fe9232d",
+        "response_schema": {
+          "type": "object",
+          "required": [
+            "status",
+            "job_id",
+            "message"
+          ],
+          "properties": {
+            "job_id": {
+              "type": "string",
+              "description": "AAP job id of the launched job as a string; empty if nothing was launched"
+            },
+            "status": {
+              "enum": [
+                "success",
+                "failed"
+              ],
+              "type": "string"
+            },
+            "message": {
+              "type": "string",
+              "description": "What was launched against which device and ports, or the error"
+            }
+          }
+        },
+        "tool_selections": [
+          "64a5eac9-2c2c-40a4-bb43-60f79af5326b",
+          "5fcb83c5-5527-450f-8803-71e65324f877",
+          "8b278034-e622-4310-b1e4-243031cb49c0"
+        ],
+        "integration_connections": [
+          {
+            "credential_id": "eaf91750-aeab-46c5-9a0f-97a610951b1d",
+            "integration_id": "dee8c279-bd65-4186-8207-af8c33b62a2a"
+          }
+        ],
+        "tool_selection_strategy": "SELECTED"
+      }
+    },
+    {
+      "id": "display_port_security",
+      "name": "Network | Display Port Security",
+      "type": "aap_job_template",
+      "position": {
+        "x": 1498.439400477456,
+        "y": -456.0615900184676
+      },
+      "parameters": {
+        "extra_vars": {
+          "_hosts": "${trigger.device_name}",
+          "interfaces": "${activity_2d800174_e4a5_4919_83f3_5495b00ba78c.result.content.interfaces}"
+        },
+        "credential_id": "73145f12-9396-4252-8e5c-8491cab1f1a2",
+        "integration_id": "3266d9ab-a707-43e1-b89b-d74c6b3170d2",
+        "job_template_name": "Network | Display Port Security",
+        "organization_name": "Network"
+      }
+    },
+    {
+      "id": "close_incident",
+      "name": "SNOW | Close Incident",
+      "type": "aap_job_template",
+      "position": {
+        "x": 1575.389868023963,
+        "y": -107.82415161479207
+      },
+      "parameters": {
+        "extra_vars": {
+          "snow_vars": "${open_incident.artifacts.snow_vars}",
+          "closed_notes": "Port security remediation on ${trigger.device_name}: ${remediate_ports.result.content.message}\n\nPorts found without port security: ${activity_2d800174_e4a5_4919_83f3_5495b00ba78c.result.content.interfaces}\n\nVerified port security configuration:\n${display_port_security.artifacts.port_security_report}"
+        },
+        "credential_id": "73145f12-9396-4252-8e5c-8491cab1f1a2",
+        "integration_id": "3266d9ab-a707-43e1-b89b-d74c6b3170d2",
+        "job_template_name": "SNOW | Close Incident",
+        "organization_name": "Network"
+      }
+    },
+    {
+      "id": "report_unremediated",
+      "name": "Ports still needing remediation",
+      "type": "agentic",
+      "position": {
+        "x": 1045.4292478535795,
+        "y": -282.25753506780177
+      },
+      "settings": {
+        "timeout": 300
+      },
+      "parameters": {
+        "prompt": "Port security remediation was REJECTED by the approver for ${trigger.device_name}.\n\nThese ports were found WITHOUT port security and remain unremediated:\n${activity_2d800174_e4a5_4919_83f3_5495b00ba78c.result.content.interfaces}\n\nDo not call any tools. Do not add, remove, reorder, rename or abbreviate any entry. Copy that list verbatim into unremediated_ports. Set device to ${trigger.device_name}. In message, state how many ports still need port security configured on that device and that no changes were made.",
+        "llm_model_id": "51db1d72-0d4c-4f08-857f-4eebac76989e",
+        "credential_id": "91c9230e-5fb0-4465-b0f3-cce14fe9232d",
+        "response_schema": {
+          "type": "object",
+          "required": [
+            "device",
+            "unremediated_ports",
+            "message"
+          ],
+          "properties": {
+            "device": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "unremediated_ports": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Ports still without port security, copied verbatim"
+            }
+          }
+        },
+        "tool_selection_strategy": "NONE"
+      }
+    },
+    {
+      "id": "review_ports",
+      "name": "Review unsecured ports",
+      "type": "approval",
+      "position": {
+        "x": 653.2797341403996,
+        "y": -541.3292361844152
+      },
+      "settings": {},
+      "parameters": {
+        "prompt": "Port security review for ${trigger.device_name}\n\nCheck result: ${activity_2d800174_e4a5_4919_83f3_5495b00ba78c.result.content.status}\nSummary: ${activity_2d800174_e4a5_4919_83f3_5495b00ba78c.result.content.details}\n\nPorts WITHOUT port security:\n${activity_2d800174_e4a5_4919_83f3_5495b00ba78c.result.content.interfaces}\n\nAPPROVE -> launch the \"NETWORK | Port Security\" job template in AAP to configure port security on exactly those ports.\nREJECT  -> make no changes; the ports above are reported as still needing remediation.",
+        "decision_window": 86400,
+        "fallback_decision": "reject"
+      }
+    },
+    {
+      "id": "close_incident_compliant",
+      "name": "SNOW | Close Incident (already compliant)",
+      "type": "aap_job_template",
+      "position": {
+        "x": 1075.389868023963,
+        "y": 42.17584838520793
+      },
+      "parameters": {
+        "extra_vars": {
+          "snow_vars": "${open_incident.artifacts.snow_vars}",
+          "closed_notes": "All relevant ports configured for port security"
+        },
+        "credential_id": "73145f12-9396-4252-8e5c-8491cab1f1a2",
+        "integration_id": "3266d9ab-a707-43e1-b89b-d74c6b3170d2",
+        "job_template_name": "SNOW | Close Incident",
+        "organization_name": "Network"
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "id": "activity_57171dcc_83df_4d87_8a51_31befaae7f2d",
+      "name": "Trigger",
+      "type": "manual_trigger",
+      "position": {
+        "x": -233,
+        "y": -27
+      },
+      "parameters": {
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "device_name"
+          ],
+          "properties": {
+            "device_name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Switch to check for port security: leaf1 or leaf2"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "New workflow",
+  "schema_version": "2.0.0"
+}

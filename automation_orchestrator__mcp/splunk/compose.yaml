@@ -1,0 +1,44 @@
+services:
+  splunk:
+    image: splunk/splunk:10.6.0
+    container_name: splunk
+    hostname: splunk
+    restart: unless-stopped
+    environment:
+      # Both flags are required by Splunk 10.x to accept the Splunk General Terms:
+      # https://www.splunk.com/en_us/legal/splunk-general-terms.html
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_GENERAL_TERMS: --accept-sgt-current-at-splunk-com
+      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:?set SPLUNK_PASSWORD in splunk/.env}
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:?set SPLUNK_HEC_TOKEN in splunk/.env}
+      # Open the S2S receiver so universal forwarders can send data in.
+      SPLUNK_ENABLE_LISTEN: "9997"
+    ports:
+      # host:container -- host side is shifted out of the way of everything
+      # already bound on this box (22, 80, 443, 3000, 3001, 5900, 6443, 8087).
+      - "18000:8000"   # Splunk Web UI
+      - "18089:8089"   # management / REST API
+      - "18088:8088"   # HTTP Event Collector
+      - "19997:9997"   # forwarder receiving (S2S)
+      # Syslog from the containerlab Catalyst switches. Same number both sides so
+      # devices and the Splunk input agree on 1544. >1024 so the non-root splunkd
+      # user can bind it. Reachable from the lab on the clab gateway, 172.20.20.1.
+      - "1544:1544/udp"
+    # The Event-Driven Ansible add-on posts alerts to the AAP event stream, and
+    # the AAP route hostname is a nip.io name that resolves to 127.0.0.1 - which
+    # inside a container is the container itself. Point it at the host instead.
+    # The OpenShift router picks the route by SNI, so the request has to keep
+    # using the hostname; connecting straight to the host IP returns 503.
+    extra_hosts:
+      - "aap-aap-operator.apps.127.0.0.1.nip.io:host-gateway"
+    volumes:
+      - splunk-etc:/opt/splunk/etc
+      - splunk-var:/opt/splunk/var
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+volumes:
+  splunk-etc:
+  splunk-var:

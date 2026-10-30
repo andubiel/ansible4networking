@@ -1,0 +1,74 @@
+---
+- name: Display Port Security
+  hosts: "{{ _hosts }}"
+  gather_facts: false
+
+  vars:
+    newline: "\n"
+
+  tasks:
+  # Orchestrator renders ${...interfaces} into extra_vars as text, so the port
+  # list can arrive as a real list, as "['Gi1/0/1', 'Gi1/0/2']" or comma
+  # separated. Normalise into a fact - extra_vars outrank set_fact, so the
+  # normalised list cannot be written back over 'interfaces' itself.
+  - name: Normalise the interfaces variable
+    ansible.builtin.set_fact:
+      remediated_ports: "{{ (parsed if parsed is not string else parsed.split(',')) | map('trim') | select | list }}"
+    vars:
+      raw: "{{ interfaces | default([]) }}"
+      parsed: "{{ (raw | from_yaml if raw is string else raw) or [] }}"
+
+  # An empty list is not an error: the discovery step found no unsecured
+  # ports, so there was nothing to remediate. Report that instead of failing.
+  - name: Report that the ports were already remediated
+    ansible.builtin.set_fact:
+      port_security_lines:
+        - "===== {{ inventory_hostname }}: no ports to verify ====="
+        - "Ports: none - the interfaces list was empty because every port was already remediated"
+    when: remediated_ports | length == 0
+
+  - name: Verify the remediated ports
+    when: remediated_ports | length > 0
+    block:
+    - name: Get the running configuration of the remediated ports
+      cisco.ios.command:
+        commands: "show running-config interface {{ item }}"
+      loop: "{{ remediated_ports }}"
+      register: port_security_config
+
+    - name: Assert port security is configured on every remediated port
+      ansible.builtin.assert:
+        that:
+          - "'switchport port-security' in item.stdout[0]"
+        fail_msg: "Port security is NOT configured on {{ inventory_hostname }} {{ item.item }}"
+        success_msg: "Port security is configured on {{ inventory_hostname }} {{ item.item }}"
+      loop: "{{ port_security_config.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Get the port security status of the remediated ports
+      cisco.ios.command:
+        commands: "show port-security interface {{ item }}"
+      loop: "{{ remediated_ports }}"
+      register: port_security_status
+      failed_when: false
+
+    - name: Build the port security report for this device
+      ansible.builtin.set_fact:
+        port_security_lines: "{{ [header, ports, '', '--- running configuration ---'] + config_lines + ['', '--- port security status ---'] + status_lines }}"
+      vars:
+        header: "===== {{ inventory_hostname }}: port security verified on {{ remediated_ports | length }} remediated port(s) ====="
+        ports: "Ports: {{ remediated_ports | join(', ') }}"
+        config_lines: "{{ port_security_config.results | map(attribute='stdout_lines') | map('first') | flatten(levels=1) }}"
+        status_lines: "{{ port_security_status.results | selectattr('stdout_lines', 'defined') | map(attribute='stdout_lines') | map('first') | flatten(levels=1) }}"
+
+  - name: Show the port security configuration
+    ansible.builtin.debug:
+      msg: "{{ port_security_lines }}"
+
+  - name: Set port security facts
+    ansible.builtin.set_stats:
+      data:
+        port_security_report: "{{ ansible_play_hosts | map('extract', hostvars, 'port_security_lines') | flatten(levels=1) | join(newline) }}"
+      aggregate: false
+    run_once: true
