@@ -1,0 +1,31 @@
+---
+- name: Create ServiceNow Incident
+  hosts: localhost
+  gather_facts: false
+
+  tasks: 
+
+  - name: Create SNOW Ticket
+    servicenow.itsm.incident:
+      instance:
+        host: "{{ SN_HOST }}"
+        username: "{{ SN_USERNAME }}"
+        password: "{{ SN_PASSWORD }}"
+      state: new
+      impact: high
+      urgency: high
+      caller: admin
+      description: "{{ snow_description }}"
+    register: snow_var
+   
+  - name: Show incident number
+    ansible.builtin.debug:
+      msg:
+        - "{{ SN_HOST }}"
+        - "{{ snow_var.record.number }}"
+
+  - name: Set incident facts
+    ansible.builtin.set_stats:
+      data:
+        snow_vars:  "{{ snow_var.record.number }}"
+

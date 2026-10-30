@@ -34,16 +34,14 @@ Deterministic port security playbooks that Ansible Automation Orchestrator calls
 | `port_security.j2` | Jinja2 template that generates access-mode switchport and sticky-MAC port security config for each interface |
 | `port_security_display.yml` | Playbook that checks and reports port security on the remediated ports. It accepts the interface list in any of the formats Orchestrator passes in, and reports when there were no ports to fix |
 
-### `splunk/`
+### `servicenow/`
 
-Splunk Enterprise setup that sends syslog from the containerlab Catalyst switches into Splunk and on to Event-Driven Ansible.
+ServiceNow playbooks behind the workflow's **SNOW | Open Incident** and **SNOW | Close Incident** job templates. Both use the `servicenow.itsm` collection and read the instance details from `SN_HOST`, `SN_USERNAME`, and `SN_PASSWORD`.
 
 | File | Description |
 |------|-------------|
-| `README.md` | Notes on running Splunk under Docker Compose: ports, credentials, and licensing |
-| `compose.yaml` | Docker Compose file for a single-instance Splunk Enterprise 10.6.0 container |
-| `setup_splunk.yml` | Playbook that creates the Cisco IOS syslog index and UDP input in Splunk and points the switches at it |
-| `setup_splunk_device.yml` | Playbook that brings a new Catalyst switch into the Splunk pipeline from a compliant baseline (logging, NTP, SNMP, STIG) |
+| `snow_open.yml` | Opens a high impact, high urgency incident from `snow_description` and passes the incident number on as the `snow_vars` artifact |
+| `snow_close.yml` | Closes the incident named in `snow_vars` and adds `closed_notes` to the close notes |
 
 ## Return to Demo Menu
 

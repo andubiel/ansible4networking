@@ -1,0 +1,27 @@
+---
+- name: Close ServiceNow Incident
+  hosts: localhost
+  gather_facts: false
+
+  tasks: 
+
+  - name: Close ticket
+    servicenow.itsm.incident:
+      instance:
+        host: "{{ SN_HOST }}"
+        username: "{{ SN_USERNAME }}"
+        password: "{{ SN_PASSWORD }}"
+      close_code: "Solved (Permanently)"
+      close_notes: "The incident is closed. {{ closed_notes }}"
+      state: closed
+      number: "{{ snow_vars }}"
+      short_description: "Ticket Closed"
+    delegate_to: localhost
+    
+  - name: Show incident number
+    ansible.builtin.debug:
+      msg:
+        - "{{ SN_HOST }}"
+        - "{{ snow_vars}}"
+  
+  
