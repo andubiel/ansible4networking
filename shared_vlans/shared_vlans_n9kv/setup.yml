@@ -1,0 +1,241 @@
+---
+# Controller-as-code for the Shared VLAN lab, Nexus 9000v (NX-OS) variant.
+# Loaded by the repo-level setup_demo.yml:
+#   ansible-navigator run setup_demo.yml -e demo=shared_vlans/shared_vlans_n9kv ...
+# The containerlab host is remote from AAP. Each n9kv is reached on the containerlab
+# host through its port mapping (n9kv1 -> 2232, n9kv2 -> 2233). ansible_host is the
+# literal '{{ container_lab }}', resolved at job runtime from the Workshop Inventory
+# variable container_lab. !unsafe keeps it from being templated here.
+# Every AAP object name contains "n9kv" so it never collides with the cat9kv lab.
+controller_components:
+  - projects
+  - credential_types
+  - credentials
+  - execution_environments
+  - hosts
+  - groups
+  - job_templates
+  - workflow_job_templates
+
+controller_projects:
+  - name: Student Project
+    organization: "Red Hat network organization"
+    scm_url: "http://ansible-1:3000/gitea/network-demos-repo.git"
+    scm_type: git
+    allow_override: true
+    state: present
+    scm_update_on_launch: true
+
+controller_execution_environments:
+  - name: "Validated Network"
+    image: registry.gitlab.com/redhatautomation/validated-network-ee:latest
+    pull: missing
+# Job templates below use the existing "ee-validated-25" EE (includes servicenow.itsm).
+# Existing credentials used: "snow_demo" (ServiceNow), "azure" (containerlab host SSH),
+# "Gitea Credential" (backups/restore).
+
+# Machine credential matching configs/n9kvX/startup.cfg (on the containerlab host)
+controller_credentials:
+  # WARNING: LAB-ONLY default password (admin@123). Not for production. Change it here and in the
+  # switch startup configs, or keep real credentials only in AAP / Ansible Vault, never in git.
+  - name: Shared VLAN n9kv Credential
+    credential_type: Machine
+    organization: "Red Hat network organization"
+    description: "admin user from configs/n9kvX/startup.cfg (on the containerlab host)"
+    inputs:
+      username: admin
+      password: admin@123
+
+controller_hosts:
+  - name: n9kv1
+    inventory: "Workshop Inventory"
+    state: present
+    enabled: true
+    variables:
+      ansible_host: !unsafe '{{ container_lab }}'
+      ansible_port: 2232
+      mgmt_ip_clab: 172.20.20.81
+      ansible_network_os: cisco.nxos.nxos
+      ansible_connection: ansible.netcommon.network_cli
+
+  - name: n9kv2
+    inventory: "Workshop Inventory"
+    state: present
+    enabled: true
+    variables:
+      ansible_host: !unsafe '{{ container_lab }}'
+      ansible_port: 2233
+      mgmt_ip_clab: 172.20.20.82
+      ansible_network_os: cisco.nxos.nxos
+      ansible_connection: ansible.netcommon.network_cli
+
+controller_groups:
+  - name: shared_vlan_n9kv
+    hosts:
+      - n9kv1
+      - n9kv2
+    inventory: "Workshop Inventory"
+    state: present
+
+controller_templates:
+  - name: "shared_vlan_n9kv_open"
+    organization: "Red Hat network organization"
+    inventory: "Workshop Inventory"
+    project: "Student Project"
+    playbook: "shared_vlans/shared_vlans_n9kv/snow_open.yml"
+    credentials:
+      - "snow_demo"
+    execution_environment: "ee-validated-25"
+    state: "present"
+
+  - name: "Shared-VLAN-n9kv-Base-Config"
+    organization: "Red Hat network organization"
+    inventory: "Workshop Inventory"
+    project: "Student Project"
+    playbook: "shared_vlans/shared_vlans_n9kv/base_config.yml"
+    credentials:
+      - "Shared VLAN n9kv Credential"
+      - "Gitea Credential"
+    execution_environment: "ee-validated-25"
+    limit: shared_vlan_n9kv
+    diff_mode: true
+    ask_job_type_on_launch: true
+    state: "present"
+
+  - name: "Shared-VLAN-n9kv-Scoped-Config"
+    organization: "Red Hat network organization"
+    inventory: "Workshop Inventory"
+    project: "Student Project"
+    playbook: "shared_vlans/shared_vlans_n9kv/scoped_config.yml"
+    credentials:
+      - "Shared VLAN n9kv Credential"
+      - "Gitea Credential"
+    execution_environment: "ee-validated-25"
+    limit: shared_vlan_n9kv
+    diff_mode: true
+    ask_job_type_on_launch: true
+    ask_tags_on_launch: true
+    state: "present"
+
+  - name: "shared_vlan_n9kv_validate"
+    organization: "Red Hat network organization"
+    inventory: "containerlab"
+    project: "Student Project"
+    playbook: "shared_vlans/shared_vlans_n9kv/validate.yml"
+    credentials:
+      - "azure"
+    execution_environment: "ee-validated-25"
+    limit: containerlab1
+    state: "present"
+
+  - name: "shared_vlan_n9kv_restore"
+    organization: "Red Hat network organization"
+    inventory: "Workshop Inventory"
+    project: "Student Project"
+    playbook: "shared_vlans/shared_vlans_n9kv/restore.yml"
+    credentials:
+      - "Shared VLAN n9kv Credential"
+      - "Gitea Credential"
+    execution_environment: "ee-validated-25"
+    limit: shared_vlan_n9kv
+    diff_mode: true
+    state: "present"
+
+  - name: "shared_vlan_n9kv_closed"
+    organization: "Red Hat network organization"
+    inventory: "Workshop Inventory"
+    project: "Student Project"
+    playbook: "shared_vlans/shared_vlans_n9kv/snow_close.yml"
+    credentials:
+      - "snow_demo"
+    execution_environment: "ee-validated-25"
+    state: "present"
+
+# shared_vlan_n9kv_open -> Base -> Shared-VLAN-n9kv-Approval -> Scoped -> validate -> closed
+# Base / Scoped / validate failure, or approval denied/timed out -> restore -> (always) closed
+controller_workflows:
+  - name: Shared-VLAN-n9kv-Workflow
+    inventory: "Workshop Inventory"
+    organization: "Red Hat network organization"
+    state: present
+    survey_enabled: true
+    survey:
+      name: ""
+      description: ""
+      spec:
+        - question_name: Inject a failure on purpose to demo the restore path?
+          question_description: >-
+            none = normal run. base_error = Base-Config pushes an invalid command
+            (vlan 5000) and fails, so the workflow rolls back via shared_vlan_n9kv_restore.
+          type: multiplechoice
+          variable: inject_failure
+          required: true
+          default: none
+          choices:
+            - none
+            - base_error
+    workflow_nodes:
+      - identifier: shared_vlan_n9kv_closed
+        workflow: "Shared-VLAN-n9kv-Workflow"
+        unified_job_template: shared_vlan_n9kv_closed
+        organization: "Red Hat network organization"
+        state: present
+
+      - identifier: shared_vlan_n9kv_restore
+        workflow: "Shared-VLAN-n9kv-Workflow"
+        unified_job_template: shared_vlan_n9kv_restore
+        organization: "Red Hat network organization"
+        always_nodes:
+          - shared_vlan_n9kv_closed
+        state: present
+
+      - identifier: shared_vlan_n9kv_validate
+        workflow: "Shared-VLAN-n9kv-Workflow"
+        unified_job_template: shared_vlan_n9kv_validate
+        organization: "Red Hat network organization"
+        success_nodes:
+          - shared_vlan_n9kv_closed
+        failure_nodes:
+          - shared_vlan_n9kv_restore
+        state: present
+
+      - identifier: Shared-VLAN-n9kv-Scoped-Config
+        workflow: "Shared-VLAN-n9kv-Workflow"
+        unified_job_template: Shared-VLAN-n9kv-Scoped-Config
+        organization: "Red Hat network organization"
+        success_nodes:
+          - shared_vlan_n9kv_validate
+        failure_nodes:
+          - shared_vlan_n9kv_restore
+        state: present
+
+      - identifier: Shared-VLAN-n9kv-Approval
+        workflow_job_template: "Shared-VLAN-n9kv-Workflow"
+        organization: "Red Hat network organization"
+        approval_node:
+          name: "Shared-VLAN-n9kv-Approval"
+          description: "Review the n9kv Base-Config job (features, hostname, interfaces) before the PVLAN / VRF-Lite scoped config is applied"
+          timeout: 0
+        success_nodes:
+          - Shared-VLAN-n9kv-Scoped-Config
+        failure_nodes:
+          - shared_vlan_n9kv_restore
+        state: present
+
+      - identifier: Shared-VLAN-n9kv-Base-Config
+        workflow: "Shared-VLAN-n9kv-Workflow"
+        unified_job_template: Shared-VLAN-n9kv-Base-Config
+        organization: "Red Hat network organization"
+        success_nodes:
+          - Shared-VLAN-n9kv-Approval
+        failure_nodes:
+          - shared_vlan_n9kv_restore
+        state: present
+
+      - identifier: shared_vlan_n9kv_open
+        workflow: "Shared-VLAN-n9kv-Workflow"
+        unified_job_template: shared_vlan_n9kv_open
+        organization: "Red Hat network organization"
+        success_nodes:
+          - Shared-VLAN-n9kv-Base-Config
+        state: present

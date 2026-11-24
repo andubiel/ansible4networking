@@ -1,0 +1,31 @@
+---
+# ios_config instead of the ios_vlans / ios_l2_interfaces resource modules: those parse
+# ALL VLANs/interfaces first, which is fragile once private-VLAN config exists.
+- name: Create regular VLANs
+  cisco.ios.ios_config:
+    parents: "vlan {{ item.vlan_id }}"
+    lines:
+      - "name {{ item.name }}"
+  loop: "{{ vlans }}"
+  loop_control:
+    label: "{{ item.vlan_id }} {{ item.name }}"
+
+- name: Configure 802.1Q trunk ports
+  cisco.ios.ios_config:
+    parents: "interface {{ item.name }}"
+    lines:
+      - switchport mode trunk
+      - "switchport trunk allowed vlan {{ item.allowed_vlans }}"
+  loop: "{{ trunk_ports }}"
+  loop_control:
+    label: "{{ item.name }} allowed {{ item.allowed_vlans }}"
+
+- name: Configure access ports
+  cisco.ios.ios_config:
+    parents: "interface {{ item.name }}"
+    lines:
+      - switchport mode access
+      - "switchport access vlan {{ item.vlan }}"
+  loop: "{{ access_ports }}"
+  loop_control:
+    label: "{{ item.name }} vlan {{ item.vlan }}"

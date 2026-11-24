@@ -1,0 +1,44 @@
+---
+# Runs on the containerlab host; endpoints are containers named clab-<lab>-<node>
+validate_lab_name: shared_vlan
+validate_become: true          # docker usually needs sudo for azureuser
+validate_ping_count: 2
+validate_ping_timeout: 2
+# Retries absorb ARP / spanning-tree settling right after config changes.
+# Expected-reachable checks stop at the first success; expected-unreachable checks
+# must fail EVERY attempt (any reply = FAIL), so isolation is still tested strictly.
+validate_retries: 3        # total attempts per check (until-loop semantics in ansible-core)
+validate_retry_delay: 15   # seconds between attempts
+# false = report failures but don't fail the job (workflow skips restore)
+validate_fail_on_error: true
+
+# expect: reachable | unreachable
+validate_checks:
+  - name: isolated -> gateway
+    src: host1
+    dst: 10.100.100.1
+    expect: reachable
+  - name: isolated -> research-srv (VRF RESEARCH)
+    src: host1
+    dst: 10.30.30.10
+    expect: reachable
+  - name: isolated <-> isolated
+    src: host1
+    dst: 10.100.100.12
+    expect: unreachable
+  - name: isolated <-> community
+    src: host1
+    dst: 10.100.100.13
+    expect: unreachable
+  - name: same community
+    src: host3
+    dst: 10.100.100.14
+    expect: reachable
+  - name: guest -> guest gateway
+    src: guest1
+    dst: 10.200.200.1
+    expect: reachable
+  - name: VRF GUEST -> VRF RESEARCH
+    src: guest1
+    dst: 10.30.30.10
+    expect: unreachable

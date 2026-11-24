@@ -1,0 +1,33 @@
+---
+# nxos_config instead of the nxos_vlans / nxos_l2_interfaces resource modules: those
+# parse ALL VLANs/interfaces first and fail on re-runs once PVLAN config exists
+# ("switchport mode private-vlan host" is not a mode they understand).
+- name: Create regular VLANs
+  cisco.nxos.nxos_config:
+    parents: "vlan {{ item.vlan_id }}"
+    lines:
+      - "name {{ item.name }}"
+  loop: "{{ vlans }}"
+  loop_control:
+    label: "{{ item.vlan_id }} {{ item.name }}"
+
+- name: Configure 802.1Q trunk ports
+  cisco.nxos.nxos_config:
+    parents: "interface {{ item.name }}"
+    lines:
+      - switchport mode trunk
+      - "switchport trunk allowed vlan {{ item.allowed_vlans }}"
+  loop: "{{ trunk_ports }}"
+  loop_control:
+    label: "{{ item.name }} allowed {{ item.allowed_vlans }}"
+
+# "switchport mode access" is the NX-OS default and isn't shown in the running
+# config, so only the access VLAN is managed (keeps the task idempotent).
+- name: Configure access ports
+  cisco.nxos.nxos_config:
+    parents: "interface {{ item.name }}"
+    lines:
+      - "switchport access vlan {{ item.vlan }}"
+  loop: "{{ access_ports }}"
+  loop_control:
+    label: "{{ item.name }} vlan {{ item.vlan }}"

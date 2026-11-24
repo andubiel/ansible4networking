@@ -1,0 +1,127 @@
+name: shared_vlan
+# Shared VLAN lab: Private VLANs + VRF-Lite + 802.1Q trunk on two Catalyst 9000v (IOS-XE)
+#
+#   research-srv (10.30.30.10)                          guest1 (10.200.200.20, VLAN 200)
+#        | eth1                                               | eth1
+#   [cat9kv1 Gi1/0/2] VRF RESEARCH             [cat9kv2 Gi1/0/6] access VLAN 200
+#   cat9kv1 (core / promiscuous gateway)       cat9kv2 (access / PVLAN host ports)
+#   Gi1/0/1 ======== 802.1Q trunk 100,101,102,200 ======== Gi1/0/1
+#                                              Gi1/0/2 host1  isolated  VLAN 101 (10.100.100.11)
+#                                              Gi1/0/3 host2  isolated  VLAN 101 (10.100.100.12)
+#                                              Gi1/0/4 host3  community VLAN 102 (10.100.100.13)
+#                                              Gi1/0/5 host4  community VLAN 102 (10.100.100.14)
+#
+# Containerlab ethN on a cat9kv maps to GigabitEthernet1/0/N.
+# Keep each cat9kv's links contiguous (eth1, eth2, ...): a gap (e.g. eth1 + eth3) makes
+# vrnetlab assign two NICs to the same PCI slot and qemu fails to start
+# ("PCI: slot 4 function 0 not available" / "Unable to connect to qemu monitor").
+# WARNING: LAB-ONLY default password (admin@123). Not for production. Change it here and in the
+# switch startup configs, or keep real credentials only in AAP / Ansible Vault, never in git.
+# startup-config files live on the containerlab host (same as ztna/ztna.clab.yml) and
+# must create the AAP login: username admin privilege 15 secret admin@123
+topology:
+  kinds:
+    cisco_cat9kv:
+      image: registry.gitlab.com/redhatautomation/catalyst9:17.12.01p
+    linux:
+      image: debian:latest
+
+  nodes:
+    cat9kv1:
+      kind: cisco_cat9kv
+      startup-config: configs/cat9kv1/startup.cfg
+      mgmt-ipv4: 172.20.20.71
+      ports:
+        - "2230:22"
+
+    cat9kv2:
+      kind: cisco_cat9kv
+      startup-config: configs/cat9kv2/startup.cfg
+      mgmt-ipv4: 172.20.20.72
+      ports:
+        - "2231:22"
+
+    # Research server behind the gateway (VRF RESEARCH)
+    research-srv:
+      kind: linux
+      mgmt-ipv4: 172.20.20.73
+      exec:
+        - apt-get update
+        - apt-get install -y iproute2 iputils-ping
+        - ip addr add 10.30.30.10/24 dev eth1
+        - ip link set dev eth1 up
+        - ip route add 10.100.100.0/24 via 10.30.30.1
+
+    # Isolated endpoint 1 (e.g. OT sensor)
+    host1:
+      kind: linux
+      mgmt-ipv4: 172.20.20.74
+      exec:
+        - apt-get update
+        - apt-get install -y iproute2 iputils-ping
+        - ip addr add 10.100.100.11/24 dev eth1
+        - ip link set dev eth1 up
+        - ip route add 10.30.30.0/24 via 10.100.100.1
+        - ip route add 10.200.200.0/24 via 10.100.100.1
+
+    # Isolated endpoint 2 (e.g. OT sensor)
+    host2:
+      kind: linux
+      mgmt-ipv4: 172.20.20.75
+      exec:
+        - apt-get update
+        - apt-get install -y iproute2 iputils-ping
+        - ip addr add 10.100.100.12/24 dev eth1
+        - ip link set dev eth1 up
+        - ip route add 10.30.30.0/24 via 10.100.100.1
+        - ip route add 10.200.200.0/24 via 10.100.100.1
+
+    # Community endpoint 1 (e.g. lab workstation)
+    host3:
+      kind: linux
+      mgmt-ipv4: 172.20.20.76
+      exec:
+        - apt-get update
+        - apt-get install -y iproute2 iputils-ping
+        - ip addr add 10.100.100.13/24 dev eth1
+        - ip link set dev eth1 up
+        - ip route add 10.30.30.0/24 via 10.100.100.1
+        - ip route add 10.200.200.0/24 via 10.100.100.1
+
+    # Community endpoint 2 (e.g. lab workstation)
+    host4:
+      kind: linux
+      mgmt-ipv4: 172.20.20.77
+      exec:
+        - apt-get update
+        - apt-get install -y iproute2 iputils-ping
+        - ip addr add 10.100.100.14/24 dev eth1
+        - ip link set dev eth1 up
+        - ip route add 10.30.30.0/24 via 10.100.100.1
+        - ip route add 10.200.200.0/24 via 10.100.100.1
+
+    # Guest / vendor endpoint (VRF GUEST)
+    guest1:
+      kind: linux
+      mgmt-ipv4: 172.20.20.78
+      exec:
+        - apt-get update
+        - apt-get install -y iproute2 iputils-ping
+        - ip addr add 10.200.200.20/24 dev eth1
+        - ip link set dev eth1 up
+        - ip route add 10.30.30.0/24 via 10.200.200.1
+        - ip route add 10.100.100.0/24 via 10.200.200.1
+
+  links:
+    # 802.1Q trunk between core and access
+    - endpoints: ["cat9kv1:eth1", "cat9kv2:eth1"]
+    # Routed port to research server (VRF RESEARCH)
+    - endpoints: ["cat9kv1:eth2", "research-srv:eth1"]
+    # PVLAN isolated host ports
+    - endpoints: ["cat9kv2:eth2", "host1:eth1"]
+    - endpoints: ["cat9kv2:eth3", "host2:eth1"]
+    # PVLAN community host ports
+    - endpoints: ["cat9kv2:eth4", "host3:eth1"]
+    - endpoints: ["cat9kv2:eth5", "host4:eth1"]
+    # Guest access port
+    - endpoints: ["cat9kv2:eth6", "guest1:eth1"]

@@ -1,0 +1,11 @@
+---
+# Restores the rollback point written by base_config.yml's pre_task git_backup:
+#   <repo>/shared_vlans/backups/<host>.cfg on master
+# username / password are injected by the AAP "Gitea Credential"
+restore_repo_url: "http://{{ username }}:{{ password }}@aap:3000/gitea/network-demos-repo.git"
+restore_branch: master
+restore_dir: shared_vlans/backups
+restore_file: "{{ inventory_hostname }}.cfg"
+restore_parent_dir: /tmp/shared_vlan_restore
+restore_remote_file: shared_vlan_restore.cfg
+restore_file_system: "flash:"

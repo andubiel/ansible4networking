@@ -1,0 +1,21 @@
+---
+# Run AFTER the SVI exists (nxos_vrf_lite) so the mapping lands on the L3 gateway
+- name: Map secondary VLANs onto the primary SVI (promiscuous L3 gateway)
+  cisco.nxos.nxos_config:
+    parents: "interface {{ item.name }}"
+    lines:
+      - "private-vlan mapping {{ item.mapping }}"
+  loop: "{{ pvlan_svi_mappings }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.mapping }}"
+
+- name: Configure L2 promiscuous ports (e.g. firewall uplink)
+  cisco.nxos.nxos_config:
+    parents: "interface {{ item.name }}"
+    lines:
+      - "switchport mode private-vlan promiscuous"
+      - "switchport private-vlan mapping {{ item.primary }} {{ item.mapping }}"
+    replace: block
+  loop: "{{ pvlan_promiscuous_ports }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.primary }} -> {{ item.mapping }}"

@@ -1,0 +1,14 @@
+---
+# Workflow failure path: roll both switches back to the backup taken by
+# base_config.yml (pre_task git_backup -> shared_vlans/backups/<host>.cfg on master).
+- name: Shared VLAN lab - restore pre-change configuration
+  hosts: "{{ _group | default('shared_vlan') }}"
+  gather_facts: false
+  vars:
+    # net_put over libssh fails on IOS-XE ("Initializing SCP session ... Socket error:
+    # No such file or directory"); paramiko works (same as network_backups_git/restore.yml).
+    # Needs the paramiko and scp Python libraries in the execution environment.
+    ansible_network_cli_ssh_type: paramiko
+
+  roles:
+    - role: ios_restore

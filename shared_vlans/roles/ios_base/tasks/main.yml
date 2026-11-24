@@ -1,0 +1,48 @@
+---
+- name: Ensure license level (reload only if it has to change)
+  ansible.builtin.import_tasks: license.yml
+  when: base_license_level | length > 0
+  tags: [license]
+
+- name: Set hostname
+  cisco.ios.ios_hostname:
+    config:
+      hostname: "{{ hostname | default(inventory_hostname) }}"
+    state: merged
+  tags: [hostname]
+
+# ip routing, vtp mode transparent (required for private VLANs), lldp, ...
+- name: Apply global base lines
+  cisco.ios.ios_config:
+    lines: "{{ base_global_lines }}"
+  when: base_global_lines | length > 0
+  tags: [global]
+
+- name: Ensure management default route ({{ mgmt_vrf }})
+  cisco.ios.ios_config:
+    lines:
+      - "ip route vrf {{ mgmt_vrf }} 0.0.0.0 0.0.0.0 {{ mgmt_gateway }}"
+  when: mgmt_gateway | length > 0
+  tags: [mgmt]
+
+- name: Configure login banner
+  cisco.ios.ios_banner:
+    banner: motd
+    text: "{{ base_banner }}"
+    state: present
+  when: base_banner | length > 0
+  tags: [banner]
+
+- name: Set interface descriptions, L2/L3 mode and admin state
+  cisco.ios.ios_interfaces:
+    config: "{{ base_interfaces }}"
+    state: merged
+  register: base_intf_result
+  when: base_interfaces | length > 0
+  tags: [interfaces]
+
+- name: Show interface changes
+  ansible.builtin.debug:
+    var: base_intf_result.commands
+  when: base_intf_result.commands is defined
+  tags: [interfaces]

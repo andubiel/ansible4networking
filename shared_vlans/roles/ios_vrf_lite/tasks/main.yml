@@ -1,0 +1,42 @@
+---
+- name: Create VRF definitions (IPv4)
+  cisco.ios.ios_config:
+    parents: "vrf definition {{ item.name }}"
+    lines:
+      - "description {{ item.description | default(item.name) }}"
+      - address-family ipv4
+  loop: "{{ vrfs }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# "vrf forwarding" removes any IP on the interface, so the whole block is pushed
+# in order (vrf forwarding -> ip address) whenever anything differs.
+# (IOS doesn't show "no shutdown" in the running config, so admin state is set separately.)
+- name: Place SVIs / routed ports in their VRF and address them
+  cisco.ios.ios_config:
+    parents: "interface {{ item.name }}"
+    lines:
+      - "description {{ item.description | default(item.vrf) }}"
+      - "vrf forwarding {{ item.vrf }}"
+      - "ip address {{ item.ipv4 }} {{ item.mask }}"
+    replace: block
+  loop: "{{ vrf_interfaces }}"
+  loop_control:
+    label: "{{ item.name }} vrf {{ item.vrf }} {{ item.ipv4 }}"
+
+- name: Enable SVIs / routed ports
+  cisco.ios.ios_interfaces:
+    config: "{{ _enabled }}"
+    state: merged
+  vars:
+    _enabled: >-
+      [{% for i in vrf_interfaces %}{"name": "{{ i.name }}", "enabled": true}{{ "," if not loop.last }}{% endfor %}]
+  when: vrf_interfaces | length > 0
+
+- name: Per-VRF static routes
+  cisco.ios.ios_config:
+    lines:
+      - "ip route vrf {{ item.vrf }} {{ item.prefix }} {{ item.mask }} {{ item.next_hop }}"
+  loop: "{{ vrf_static_routes }}"
+  loop_control:
+    label: "{{ item.vrf }} {{ item.prefix }} via {{ item.next_hop }}"

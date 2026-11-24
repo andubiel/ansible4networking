@@ -14,6 +14,7 @@ Each meetup session features a speaker in the first half and a live demo in the 
 - **[ZTNA with Ansible](ztna/README.md)** — automating Zero Trust Network Accesswith Ansible (webinar Sept 9th)
 - **[Protect the Network with PSIRT API and Ansible](psirt_api_ansible/README.md)** — The PSIRT openVuln API and Ansible Automation
 - **[Introduction to Ansible Automation Orchestrator and MCP for Networking](automation_orchestrator__mcp/README.md)** — Ansible Automation Orchestrator and MCP for network automation (meetup Oct 29th, 2026, [recording](https://youtu.be/-zheXw8zsy8?si=DnmVZjlp7Y4BF4zm))
+- **[Shared VLANs with Private VLANs, VRF-Lite and 802.1Q](shared_vlans/README.md)** — isolating endpoints on a single shared subnet using PVLANs, VRF-Lite and trunking on Catalyst 9000v, deployed in containerlab from an AAP workflow that opens and closes a ServiceNow incident and rolls back on failure ([NX-OS variant](shared_vlans/shared_vlans_n9kv/README.md))
 
 ## Featured Demos
 

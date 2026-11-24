@@ -1,0 +1,9 @@
+---
+# Workflow failure path: roll both switches back to the backup taken by
+# base_config.yml (pre_task git_backup -> shared_vlans/shared_vlans_n9kv/backups/<host>.cfg on master).
+- name: Shared VLAN lab (n9kv) - restore pre-change configuration
+  hosts: "{{ _group | default('shared_vlan_n9kv') }}"
+  gather_facts: false
+
+  roles:
+    - role: nxos_restore

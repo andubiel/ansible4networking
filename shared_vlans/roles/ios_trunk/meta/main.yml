@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: ios_trunk
+  author: network-demos
+  description: Shared VLAN lab - ios_trunk
+  license: MIT
+  min_ansible_version: "2.15"
+dependencies: []

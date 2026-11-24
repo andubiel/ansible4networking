@@ -1,0 +1,4 @@
+---
+vlans: []         # [{vlan_id, name}]
+trunk_ports: []   # [{name, allowed_vlans}]
+access_ports: []  # [{name, vlan}]

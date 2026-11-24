@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: git_backup
+  author: network-demos
+  description: Shared VLAN lab - git_backup
+  license: MIT
+  min_ansible_version: "2.15"
+dependencies: []

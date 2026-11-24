@@ -1,0 +1,59 @@
+---
+- name: Clone repository on branch {{ restore_branch }}
+  ansible.scm.git_retrieve:
+    origin:
+      url: "{{ restore_repo_url }}"
+    parent_directory: "{{ restore_parent_dir }}"
+    branch:
+      name: "{{ restore_branch }}"
+      duplicate_detection: false
+    timeout: 240
+  register: restore_repo
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+
+- name: Set backup file path
+  ansible.builtin.set_fact:
+    restore_local_file: "{{ restore_repo.path }}/{{ restore_dir }}/{{ restore_file }}"
+
+- name: Check backup exists
+  ansible.builtin.stat:
+    path: "{{ restore_local_file }}"
+  register: restore_stat
+  delegate_to: localhost
+
+- name: Fail if there is no backup to restore
+  ansible.builtin.assert:
+    that: restore_stat.stat.exists
+    fail_msg: "No backup {{ restore_dir }}/{{ restore_file }} on {{ restore_branch }}. Run base_config.yml first."
+    quiet: true
+
+- name: Enable SCP server for the file transfer
+  cisco.nxos.nxos_config:
+    lines:
+      - feature scp-server
+
+- name: Copy backup file to switch {{ restore_file_system }}
+  cisco.nxos.nxos_file_copy:
+    local_file: "{{ restore_local_file }}"
+    remote_file: "{{ restore_remote_file }}"
+    file_system: "{{ restore_file_system }}"
+
+# NX-OS "configure replace": the running config becomes exactly the backup
+- name: Replace running config with backup
+  cisco.nxos.nxos_config:
+    replace: config
+    replace_src: "{{ restore_file_system }}{{ restore_remote_file }}"
+  register: restore_replace
+  vars:
+    ansible_command_timeout: 300
+
+- name: Save restored config to startup
+  cisco.nxos.nxos_config:
+    save_when: always
+
+- name: Publish restore result to the workflow
+  ansible.builtin.set_stats:
+    data:
+      restore_results: "{{ {inventory_hostname: {'status': 'restored', 'source': restore_branch ~ ':' ~ restore_dir ~ '/' ~ restore_file}} }}"

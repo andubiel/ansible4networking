@@ -1,0 +1,81 @@
+---
+# "show version" license table line looks like:
+#   network-essentials   Smart License   network-essentials
+#   (current level)                      (level after next reload)
+- name: Read license level
+  cisco.ios.ios_command:
+    commands:
+      - "show version | include ^network-"
+  register: base_license
+
+- name: Parse license level
+  ansible.builtin.set_fact:
+    base_license_current: "{{ (base_license.stdout[0].split() | first) | default('unknown') }}"
+    base_license_next: "{{ (base_license.stdout[0].split() | last) | default('unknown') }}"
+
+- name: Show license level
+  ansible.builtin.debug:
+    msg: "current {{ base_license_current }}, after reload {{ base_license_next }}, wanted {{ base_license_level }}"
+
+- name: Change license level and reload
+  when: base_license_current != base_license_level
+  block:
+    - name: Set boot license level
+      cisco.ios.ios_config:
+        lines:
+          - "license boot level {{ base_license_level }}"
+      when: base_license_next != base_license_level
+
+    - name: Save config before reload
+      cisco.ios.ios_config:
+        save_when: always
+
+    - name: Reload to activate {{ base_license_level }}
+      ansible.netcommon.cli_command:
+        command: reload
+        prompt:
+          - "Save\\?"
+          - "confirm"
+        answer:
+          - "no"
+          - "y"
+        check_all: false
+      failed_when: false   # the session drops as the switch reloads
+
+    - name: Drop the old SSH session
+      ansible.builtin.meta: reset_connection
+
+    - name: Give the switch time to go down
+      ansible.builtin.pause:
+        seconds: 90
+
+    # The containerlab port forward accepts TCP even while the VM boots, so poll
+    # with a real CLI command instead of a port check.
+    - name: Wait for the switch to come back
+      cisco.ios.ios_command:
+        commands:
+          - "show version | include ^network-"
+      register: base_license_after
+      until: base_license_after is succeeded
+      retries: "{{ base_reload_wait_retries }}"
+      delay: 20
+
+# Always runs (reload or not): the job fails unless the switch is actually running the
+# wanted level, so Scoped-Config never starts on a switch that can't do VRF-Lite.
+- name: Re-read license level
+  cisco.ios.ios_command:
+    commands:
+      - "show version | include ^network-"
+  register: base_license_final
+
+- name: Record running license level
+  ansible.builtin.set_fact:
+    base_license_running: "{{ base_license_final.stdout[0].split() | first }}"
+
+- name: Verify switch is running {{ base_license_level }}
+  ansible.builtin.assert:
+    that: base_license_running == base_license_level
+    fail_msg: >-
+      {{ inventory_hostname }} is running {{ base_license_running }}, not {{ base_license_level }}.
+      VRF-Lite ("vrf definition") will fail. Check "show version" / "show license summary".
+    success_msg: "{{ inventory_hostname }} is running {{ base_license_level }}"

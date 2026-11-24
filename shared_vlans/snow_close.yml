@@ -1,0 +1,131 @@
+---
+# Last node of Shared-VLAN-Workflow (after shared_vlan_validate on success, or
+# after shared_vlan_restore on the failure path).
+# Consumes workflow artifacts published by earlier nodes:
+#   shared_vlan_ticket  snow_open.yml       incident number
+#   base_results        base_config.yml     {host: {...}}
+#   scoped_results      scoped_config.yml   {host: {...}}
+#   validation_report   validate.yml        {passed, checks: [...]}
+#   restore_results     restore.yml         {host: {...}}
+# All checks passed and no restore -> incident closed with the full summary.
+# Otherwise -> incident left In Progress with the summary as work notes.
+- name: Close ServiceNow incident for shared VLAN configuration
+  hosts: localhost
+  gather_facts: false
+  vars:
+    workflow_id: "{{ awx_workflow_job_id | default(tower_workflow_job_id) | default('n/a') }}"
+    base: "{{ base_results | default({}) }}"
+    scoped: "{{ scoped_results | default({}) }}"
+    val: "{{ validation_report | default({}) }}"
+    rst: "{{ restore_results | default({}) }}"
+    base_ok: "{{ base | length > 0 and base.values() | rejectattr('status', 'eq', 'success') | list | length == 0 }}"
+    scoped_ok: "{{ scoped | length > 0 and scoped.values() | rejectattr('status', 'eq', 'success') | list | length == 0 }}"
+    val_ok: "{{ val.passed | default(false) | bool }}"
+    passed: "{{ base_ok | bool and scoped_ok | bool and val_ok | bool and rst | length == 0 }}"
+    summary: |-
+      SHARED VLAN CONFIGURATION {{ 'COMPLETED SUCCESSFULLY' if passed | bool else 'FAILED - ROLLED BACK' if rst else 'DID NOT COMPLETE' }}
+      AAP workflow job: {{ workflow_id }}
+      {% if inject_failure | default('none') != 'none' %}
+      DEMO: failure deliberately injected (inject_failure={{ inject_failure }}) to show the restore path
+      {% endif %}
+
+      [PASS] 1. OPEN TICKET
+        Incident {{ shared_vlan_ticket | default('n/a') }}
+
+      [{{ 'PASS' if base_ok | bool else ('FAIL' if base else 'FAIL / NOT RUN') }}] 2. BASE CONFIG
+      {% for h, r in base | dictsort %}
+        {{ h }}: {{ r.status }} - license {{ r.license | default('n/a') }}; rollback backup {{ r.backup }}
+          global {{ r.global_lines | join(', ') }}
+      {% endfor %}
+
+      [{{ 'PASS' if scoped_ok | bool else ('FAIL' if scoped else 'NOT RUN') }}] 3. APPROVAL + SCOPED CONFIG
+      {% if not scoped and base_ok | bool %}
+        Scoped config did not run (approval denied / timed out, or failed before publishing results)
+      {% endif %}
+      {% for h, r in scoped | dictsort %}
+        {{ h }}: {{ r.status }} - VLANs {{ r.vlans }}; VRFs {{ r.vrfs | join(', ') if r.vrfs else 'none' }}
+          PVLAN host ports {{ r.pvlan_host_ports }}; backup {{ r.backup }}
+      {% endfor %}
+
+      [{{ 'PASS' if val_ok | bool else ('FAIL' if val else 'NOT RUN') }}] 4. VALIDATE (endpoint ping matrix)
+      {% for c in val.checks | default([]) %}
+        [{{ c.result }}] {{ '%-42s' | format(c.check) }} {{ c.src }} -> {{ c.dst }} expected {{ c.expected }}, got {{ c.actual }}
+      {% endfor %}
+
+      {% if rst %}
+      [DONE] 5. RESTORE (failure path)
+      {% for h, r in rst | dictsort %}
+        {{ h }}: {{ r.status }} from {{ r.source }}
+      {% endfor %}
+      {% else %}
+      [SKIPPED] 5. RESTORE - not needed
+      {% endif %}
+
+  tasks:
+    - name: Show which workflow artifacts were received
+      ansible.builtin.debug:
+        msg:
+          - "shared_vlan_ticket: {{ shared_vlan_ticket | default('NOT RECEIVED') }}"
+          - "base_results:       {{ base.keys() | list if base else 'NOT RECEIVED' }}"
+          - "scoped_results:     {{ scoped.keys() | list if scoped else 'NOT RECEIVED' }}"
+          - "validation_report:  {{ ('passed=' ~ val.passed) if val else 'NOT RECEIVED' }}"
+          - "restore_results:    {{ rst.keys() | list if rst else 'none' }}"
+
+    - name: Look up open shared VLAN incident in ServiceNow (no artifact, e.g. run standalone)
+      when: shared_vlan_ticket is not defined
+      block:
+        - name: Find newest open shared VLAN incident
+          servicenow.itsm.incident_info:
+            instance:
+              host: "{{ SN_HOST }}"
+              username: "{{ SN_USERNAME }}"
+              password: "{{ SN_PASSWORD }}"
+            sysparm_query: "short_descriptionSTARTSWITHShared VLAN configuration started^stateNOT IN6,7,8^ORDERBYDESCsys_created_on"
+          register: snow_lookup
+
+        - name: Use incident from lookup
+          ansible.builtin.set_fact:
+            shared_vlan_ticket: "{{ snow_lookup.records[0].number }}"
+          when: snow_lookup.records | length > 0
+
+    - name: Fail if no incident could be found
+      ansible.builtin.assert:
+        that: shared_vlan_ticket is defined
+        fail_msg: >-
+          No 'shared_vlan_ticket' artifact and no open "Shared VLAN configuration started"
+          incident in ServiceNow. Run this job in Shared-VLAN-Workflow after shared_vlan_open.
+        quiet: true
+
+    - name: Show summary
+      ansible.builtin.debug:
+        msg: "{{ summary.split('\n') }}"
+
+    - name: Close incident (all steps passed)
+      servicenow.itsm.incident:
+        instance:
+          host: "{{ SN_HOST }}"
+          username: "{{ SN_USERNAME }}"
+          password: "{{ SN_PASSWORD }}"
+        number: "{{ shared_vlan_ticket }}"
+        state: closed
+        close_code: "Solved (Permanently)"
+        close_notes: "{{ summary }}"
+        short_description: "Shared VLAN configuration completed (PVLAN + VRF-Lite)"
+      when: passed | bool
+
+    - name: Update incident (failure / rollback - left open for follow-up)
+      servicenow.itsm.incident:
+        instance:
+          host: "{{ SN_HOST }}"
+          username: "{{ SN_USERNAME }}"
+          password: "{{ SN_PASSWORD }}"
+        number: "{{ shared_vlan_ticket }}"
+        state: in_progress
+        short_description: "Shared VLAN configuration FAILED{{ ' - rolled back' if rst else '' }} - action required"
+        other:
+          work_notes: "{{ summary }}"
+      when: not passed | bool
+
+    - name: Result
+      ansible.builtin.debug:
+        msg: "Incident {{ shared_vlan_ticket }} {{ 'CLOSED' if passed | bool else 'left OPEN (In Progress)' }} on {{ SN_HOST }}"

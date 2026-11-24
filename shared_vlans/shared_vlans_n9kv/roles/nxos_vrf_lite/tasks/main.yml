@@ -1,0 +1,33 @@
+---
+- name: Create VRF contexts
+  cisco.nxos.nxos_config:
+    parents: "vrf context {{ item.name }}"
+    lines:
+      - "description {{ item.description | default(item.name) }}"
+  loop: "{{ vrfs }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# "vrf member" wipes any existing IP on the interface, so the whole block is
+# pushed in order (vrf member -> ip address) whenever anything differs.
+- name: Place SVIs / routed ports in their VRF and address them
+  cisco.nxos.nxos_config:
+    parents: "interface {{ item.name }}"
+    lines:
+      - "description {{ item.description | default(item.vrf) }}"
+      - "vrf member {{ item.vrf }}"
+      - "ip address {{ item.ipv4 }}"
+      - "no shutdown"
+    replace: block
+  loop: "{{ vrf_interfaces }}"
+  loop_control:
+    label: "{{ item.name }} vrf {{ item.vrf }} {{ item.ipv4 }}"
+
+- name: Per-VRF static routes
+  cisco.nxos.nxos_config:
+    parents: "vrf context {{ item.vrf }}"
+    lines:
+      - "ip route {{ item.prefix }} {{ item.next_hop }}"
+  loop: "{{ vrf_static_routes }}"
+  loop_control:
+    label: "{{ item.vrf }} {{ item.prefix }} via {{ item.next_hop }}"

@@ -1,0 +1,4 @@
+---
+# Roles intentionally share one host_vars/group_vars data model (no role prefixes)
+skip_list:
+  - var-naming[no-role-prefix]

@@ -1,0 +1,19 @@
+---
+# Example inventory. The containerlab host is remote from AAP, so SSH goes to the
+# containerlab host and lands on each cat9kv through its port mapping
+# (2230 -> cat9kv1:22, 2231 -> cat9kv2:22).
+# In AAP these hosts live in "Workshop Inventory" (see setup.yml).
+shared_vlan:
+  hosts:
+    cat9kv1:
+      ansible_host: "{{ container_lab }}"
+      ansible_port: 2230
+    cat9kv2:
+      ansible_host: "{{ container_lab }}"
+      ansible_port: 2231
+  vars:
+    container_lab: 20.51.209.242   # containerlab host (same var as Workshop Inventory)
+    # WARNING: LAB-ONLY default password (admin@123). Not for production. Change it here and in the
+    # switch startup configs, or keep real credentials only in AAP / Ansible Vault, never in git.
+    ansible_user: admin
+    ansible_password: admin@123   # set by configs/cat9kvX/startup.cfg on the clab host

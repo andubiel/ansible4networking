@@ -1,0 +1,41 @@
+---
+ansible_network_os: cisco.nxos.nxos
+ansible_connection: ansible.netcommon.network_cli
+
+# ---------- base_config.yml ----------
+base_features:
+  - interface-vlan
+  - private-vlan
+  - lldp
+
+base_global_lines:
+  - no ip domain-lookup
+
+base_banner: |
+  ********************************************************
+  * Shared VLAN Lab (n9kv) - Authorized access only.     *
+  * PVLAN + VRF-Lite segmentation managed by Ansible.    *
+  ********************************************************
+
+mgmt_gateway: 172.20.20.1
+
+# ---------- scoped_config.yml ----------
+# Private VLAN domain must exist on every switch the PVLAN spans
+# (the 802.1Q trunk carries the primary and secondary VLANs between them).
+pvlan_secondary:
+  - vlan_id: 101
+    name: OT_ISOLATED
+    type: isolated
+  - vlan_id: 102
+    name: LAB_COMMUNITY
+    type: community
+
+pvlan_primary:
+  - vlan_id: 100
+    name: SHARED_PRIMARY
+    association: "101-102"
+
+# Regular (non-PVLAN) VLANs
+vlans:
+  - vlan_id: 200
+    name: GUEST

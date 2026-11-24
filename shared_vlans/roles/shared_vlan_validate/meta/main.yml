@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: shared_vlan_validate
+  author: network-demos
+  description: Shared VLAN lab - shared_vlan_validate
+  license: MIT
+  min_ansible_version: "2.15"
+dependencies: []

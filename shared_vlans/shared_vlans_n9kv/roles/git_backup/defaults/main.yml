@@ -1,0 +1,12 @@
+---
+# username / password / email are injected as extra vars by the AAP "Gitea Credential"
+git_backup_repo_url: "http://{{ username }}:{{ password }}@aap:3000/gitea/network-demos-repo.git"
+git_backup_branch: master
+git_backup_dir: shared_vlans/shared_vlans_n9kv/backups
+# base_config.yml keeps <host>.cfg (rollback point used by nxos_restore);
+# scoped_config.yml overrides this to <host>_scoped.cfg
+git_backup_file: "{{ inventory_hostname }}.cfg"
+git_backup_parent_dir: /tmp/shared_vlan_n9kv_backup
+git_backup_user_name: "{{ username | default('ansible') }}"
+git_backup_user_email: "{{ email | default('ansible@localhost') }}"
+git_backup_commit_message: "shared_vlans_n9kv backup ({{ ansible_play_name }})"

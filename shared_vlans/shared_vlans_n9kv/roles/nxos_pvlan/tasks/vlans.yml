@@ -1,0 +1,22 @@
+---
+# Secondary VLANs must exist before the primary can associate them
+- name: Create secondary (isolated/community) VLANs
+  cisco.nxos.nxos_config:
+    parents: "vlan {{ item.vlan_id }}"
+    lines:
+      - "private-vlan {{ item.type }}"
+      - "name {{ item.name }}"
+  loop: "{{ pvlan_secondary }}"
+  loop_control:
+    label: "{{ item.vlan_id }} {{ item.type }}"
+
+- name: Create primary VLANs and associate secondaries
+  cisco.nxos.nxos_config:
+    parents: "vlan {{ item.vlan_id }}"
+    lines:
+      - "private-vlan primary"
+      - "private-vlan association {{ item.association }}"
+      - "name {{ item.name }}"
+  loop: "{{ pvlan_primary }}"
+  loop_control:
+    label: "{{ item.vlan_id }} primary -> {{ item.association }}"

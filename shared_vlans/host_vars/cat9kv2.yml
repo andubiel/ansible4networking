@@ -1,0 +1,55 @@
+---
+# Access switch hosting the PVLAN endpoints
+hostname: cat9kv2
+
+base_interfaces:
+  - name: GigabitEthernet1/0/1
+    description: TRUNK to cat9kv1 Gi1/0/1
+    mode: layer2
+    enabled: true
+  - name: GigabitEthernet1/0/2
+    description: host1 (isolated)
+    mode: layer2
+    enabled: true
+  - name: GigabitEthernet1/0/3
+    description: host2 (isolated)
+    mode: layer2
+    enabled: true
+  - name: GigabitEthernet1/0/4
+    description: host3 (community)
+    mode: layer2
+    enabled: true
+  - name: GigabitEthernet1/0/5
+    description: host4 (community)
+    mode: layer2
+    enabled: true
+  - name: GigabitEthernet1/0/6
+    description: guest1 (guest)
+    mode: layer2
+    enabled: true
+
+trunk_ports:
+  - name: GigabitEthernet1/0/1
+    allowed_vlans: "100-102,200"
+
+access_ports:
+  - name: GigabitEthernet1/0/6
+    vlan: 200
+
+pvlan_host_ports:
+  - name: GigabitEthernet1/0/2
+    primary: 100
+    secondary: 101
+  - name: GigabitEthernet1/0/3
+    primary: 100
+    secondary: 101
+  - name: GigabitEthernet1/0/4
+    primary: 100
+    secondary: 102
+  - name: GigabitEthernet1/0/5
+    primary: 100
+    secondary: 102
+
+vrfs: []
+vrf_interfaces: []
+pvlan_svi_mappings: []

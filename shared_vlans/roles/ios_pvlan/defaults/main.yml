@@ -1,0 +1,6 @@
+---
+pvlan_secondary: []          # [{vlan_id, name, type: isolated|community}]
+pvlan_primary: []            # [{vlan_id, name, association: "101,102"}]
+pvlan_host_ports: []         # [{name, primary, secondary}]
+pvlan_svi_mappings: []       # [{name: VlanX, mapping: "101,102"}]
+pvlan_promiscuous_ports: []  # [{name, primary, mapping: "101,102"}]

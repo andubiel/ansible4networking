@@ -1,0 +1,70 @@
+---
+- name: Ping test from endpoint containers
+  ansible.builtin.command:
+    cmd: >-
+      docker exec clab-{{ validate_lab_name }}-{{ item.src }}
+      ping -c {{ validate_ping_count }} -W {{ validate_ping_timeout }} {{ item.dst }}
+  become: "{{ validate_become }}"
+  register: validate_pings
+  loop: "{{ validate_checks }}"
+  loop_control:
+    label: "{{ item.src }} -> {{ item.dst }} (expect {{ item.expect }})"
+  changed_when: false
+  failed_when: false
+  # stop on a reply (pass for "reachable", fail for "unreachable") or on an error
+  # (no ping summary, e.g. missing container); otherwise keep trying
+  until: validate_pings.rc == 0 or 'packet loss' not in validate_pings.stdout
+  retries: "{{ validate_retries }}"
+  delay: "{{ validate_retry_delay }}"
+
+# rc 0 = replies, rc 1 + "packet loss" = no replies, anything else (e.g. missing
+# container) = error, so a broken lab can never "pass" an expect-unreachable check.
+- name: Evaluate results
+  ansible.builtin.set_fact:
+    validate_results: "{{ validate_results | default([]) + [_result] }}"
+  loop: "{{ validate_pings.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  vars:
+    _actual: >-
+      {{ 'reachable' if item.rc == 0
+         else ('unreachable' if 'packet loss' in item.stdout else 'error') }}
+    _loss: "{{ item.stdout | regex_search('[0-9.]+% packet loss') | default('', true) }}"
+    _result:
+      check: "{{ item.item.name }}"
+      src: "{{ item.item.src }}"
+      dst: "{{ item.item.dst }}"
+      expected: "{{ item.item.expect }}"
+      actual: "{{ _actual | trim }}"
+      result: "{{ 'PASS' if (_actual | trim) == item.item.expect else 'FAIL' }}"
+      detail: "{{ (_loss if _loss else (item.stderr | default('') | trim)[:120]) ~ ' (' ~ (item.attempts | default(1)) ~ ' attempt(s))' }}"
+
+- name: Validation report
+  ansible.builtin.debug:
+    msg: "[{{ item.result }}] {{ item.check }}: {{ item.src }} -> {{ item.dst }} expected {{ item.expected }}, got {{ item.actual }} {{ item.detail }}"
+  loop: "{{ validate_results }}"
+  loop_control:
+    label: "{{ item.check }}"
+
+- name: Publish validation report to the workflow
+  ansible.builtin.set_stats:
+    data:
+      validation_report:
+        passed: "{{ validate_results | selectattr('result', 'eq', 'FAIL') | list | length == 0 }}"
+        checks: "{{ validate_results }}"
+
+- name: Assert all segmentation checks passed
+  ansible.builtin.assert:
+    that: validate_results | selectattr('result', 'eq', 'FAIL') | list | length == 0
+    fail_msg: >-
+      Segmentation checks FAILED:
+      {{ validate_results | selectattr('result', 'eq', 'FAIL') | map(attribute='check') | list }}
+    success_msg: "All {{ validate_results | length }} segmentation checks passed"
+  when: validate_fail_on_error | bool
+
+- name: Warn that failures are not enforced
+  ansible.builtin.debug:
+    msg: >-
+      validate_fail_on_error is false: {{ validate_results | selectattr('result', 'eq', 'FAIL') | list | length }}
+      failed check(s) ignored, config left in place (no restore)
+  when: not (validate_fail_on_error | bool)

@@ -1,0 +1,15 @@
+---
+# Workflow node after Shared-VLAN-Scoped-Config.
+# Runs on the containerlab host (inventory "containerlab", host containerlab1)
+# and pings between endpoint containers to prove PVLAN + VRF-Lite isolation.
+# Publishes "validation_report" to the workflow and FAILS if any check fails,
+# which sends the workflow down the shared_vlan_restore path.
+- name: Shared VLAN lab (n9kv) - validate segmentation
+  hosts: "{{ validate_host | default('containerlab1') }}"
+  gather_facts: false
+
+  vars:
+    validate_lab_name: shared_vlan_n9kv   # containers clab-shared_vlan_n9kv-<node>
+
+  roles:
+    - role: shared_vlan_validate

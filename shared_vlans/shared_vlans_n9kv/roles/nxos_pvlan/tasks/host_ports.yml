@@ -1,0 +1,11 @@
+---
+- name: Configure PVLAN host ports (isolated / community)
+  cisco.nxos.nxos_config:
+    parents: "interface {{ item.name }}"
+    lines:
+      - "switchport mode private-vlan host"
+      - "switchport private-vlan host-association {{ item.primary }} {{ item.secondary }}"
+    replace: block
+  loop: "{{ pvlan_host_ports }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.primary }}/{{ item.secondary }}"

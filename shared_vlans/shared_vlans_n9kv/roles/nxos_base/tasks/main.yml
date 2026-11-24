@@ -1,0 +1,49 @@
+---
+- name: Set hostname
+  cisco.nxos.nxos_hostname:
+    config:
+      hostname: "{{ hostname | default(inventory_hostname) }}"
+    state: merged
+  tags: [hostname]
+
+- name: Enable NX-OS features
+  cisco.nxos.nxos_config:
+    lines: "{{ base_features | map('regex_replace', '^', 'feature ') | list }}"
+  when: base_features | length > 0
+  tags: [features]
+
+- name: Apply global base lines
+  cisco.nxos.nxos_config:
+    lines: "{{ base_global_lines }}"
+  when: base_global_lines | length > 0
+  tags: [global]
+
+- name: Ensure management default route (VRF management)
+  cisco.nxos.nxos_config:
+    parents: vrf context management
+    lines:
+      - "ip route 0.0.0.0/0 {{ mgmt_gateway }}"
+  when: mgmt_gateway | length > 0
+  tags: [mgmt]
+
+- name: Configure login banner
+  cisco.nxos.nxos_banner:
+    banner: motd
+    text: "{{ base_banner }}"
+    state: present
+  when: base_banner | length > 0
+  tags: [banner]
+
+- name: Set interface descriptions, L2/L3 mode and admin state
+  cisco.nxos.nxos_interfaces:
+    config: "{{ base_interfaces }}"
+    state: merged
+  register: base_intf_result
+  when: base_interfaces | length > 0
+  tags: [interfaces]
+
+- name: Show interface changes
+  ansible.builtin.debug:
+    var: base_intf_result.commands
+  when: base_intf_result.commands is defined
+  tags: [interfaces]

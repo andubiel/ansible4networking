@@ -1,0 +1,8 @@
+---
+- name: Private VLAN domain (secondary then primary)
+  ansible.builtin.import_tasks: vlans.yml
+  tags: [pvlan_vlans]
+
+- name: Private VLAN host ports
+  ansible.builtin.import_tasks: host_ports.yml
+  tags: [pvlan_ports]

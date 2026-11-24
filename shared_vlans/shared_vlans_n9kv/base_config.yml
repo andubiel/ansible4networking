@@ -1,0 +1,53 @@
+---
+# Day-0/1 baseline for the shared VLAN lab n9kv (NX-OS) switches:
+# hostname, features (interface-vlan, private-vlan, lldp), mgmt route, banner,
+# interface descriptions and L2/L3 mode.
+- name: Shared VLAN lab (n9kv) - base configuration
+  hosts: "{{ _group | default('shared_vlan_n9kv') }}"
+  gather_facts: false
+
+  pre_tasks:
+    - name: Push running config backups to shared_vlans/shared_vlans_n9kv/backups on master
+      ansible.builtin.include_role:
+        name: git_backup
+        apply:
+          tags: [git_backup]
+      tags: [git_backup]
+
+  roles:
+    - role: nxos_base
+
+  post_tasks:
+    # DEMO failure injection (Shared-VLAN-Workflow survey -> extra var inject_failure):
+    #   none        normal run (default)
+    #   base_error  after nxos_base has made its changes, push an invalid command
+    #               ("vlan 5000", VLAN IDs stop at 4094). NX-OS rejects it, this job
+    #               fails, and the workflow goes straight to shared_vlan_restore.
+    - name: "DEMO: failure injection is active"
+      ansible.builtin.debug:
+        msg: >-
+          inject_failure={{ inject_failure }}: this run is DELIBERATELY broken to demonstrate
+          the restore path. Expect the workflow to roll back and leave the incident open.
+      when: inject_failure | default('none') != 'none'
+      tags: [always]
+
+    - name: "DEMO base_error: push an invalid command"
+      cisco.nxos.nxos_config:
+        lines:
+          - vlan 5000
+      when: inject_failure | default('none') == 'base_error'
+      tags: [always]
+
+    - name: Save running config to startup when modified
+      cisco.nxos.nxos_config:
+        save_when: modified
+      tags: [always]
+
+    - name: Publish base config result to the workflow
+      ansible.builtin.set_stats:
+        data:
+          base_results: "{{ {inventory_hostname: {
+            'status': 'success',
+            'backup': 'master:shared_vlans/shared_vlans_n9kv/backups/' ~ inventory_hostname ~ '.cfg',
+            'features': base_features}} }}"
+      tags: [always]

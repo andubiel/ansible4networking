@@ -1,0 +1,72 @@
+---
+- name: Clone repository on branch {{ restore_branch }}
+  ansible.scm.git_retrieve:
+    origin:
+      url: "{{ restore_repo_url }}"
+    parent_directory: "{{ restore_parent_dir }}"
+    branch:
+      name: "{{ restore_branch }}"
+      duplicate_detection: false
+    timeout: 240
+  register: restore_repo
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+
+- name: Set backup file paths
+  ansible.builtin.set_fact:
+    restore_local_file: "{{ restore_repo.path }}/{{ restore_dir }}/{{ restore_file }}"
+    restore_clean_file: "{{ restore_parent_dir }}/{{ inventory_hostname }}_replace.cfg"
+
+- name: Check backup exists
+  ansible.builtin.stat:
+    path: "{{ restore_local_file }}"
+  register: restore_stat
+  delegate_to: localhost
+
+- name: Fail if there is no backup to restore
+  ansible.builtin.assert:
+    that: restore_stat.stat.exists
+    fail_msg: "No backup {{ restore_dir }}/{{ restore_file }} on {{ restore_branch }}. Run base_config.yml first."
+    quiet: true
+
+# "configure replace" needs a plain config file: drop the show running-config header
+- name: Build replace file without show running-config header
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('ansible.builtin.file', restore_local_file)
+         | regex_replace('(?m)^(Building configuration\.\.\.|Current configuration : .*)\n', '') }}
+    dest: "{{ restore_clean_file }}"
+    mode: "0644"
+  delegate_to: localhost
+
+- name: Enable SCP server for the file transfer
+  cisco.ios.ios_config:
+    lines:
+      - ip scp server enable
+
+- name: Copy backup to {{ restore_file_system }}
+  ansible.netcommon.net_put:
+    src: "{{ restore_clean_file }}"
+    dest: "{{ restore_file_system }}{{ restore_remote_file }}"
+
+# IOS-XE "configure replace": the running config becomes exactly the backup
+- name: Replace running config with backup
+  ansible.netcommon.cli_command:
+    command: "configure replace {{ restore_file_system }}{{ restore_remote_file }} force"
+  register: restore_replace
+  vars:
+    ansible_command_timeout: 300
+
+- name: Show replace result
+  ansible.builtin.debug:
+    var: restore_replace.stdout_lines
+
+- name: Save restored config to startup
+  cisco.ios.ios_config:
+    save_when: always
+
+- name: Publish restore result to the workflow
+  ansible.builtin.set_stats:
+    data:
+      restore_results: "{{ {inventory_hostname: {'status': 'restored', 'source': restore_branch ~ ':' ~ restore_dir ~ '/' ~ restore_file}} }}"

@@ -1,0 +1,72 @@
+---
+# First node of Shared-VLAN-Workflow.
+# Opens ONE ServiceNow incident (change record) for the shared VLAN configuration
+# and publishes its number as the workflow artifact "shared_vlan_ticket" so that
+# snow_close.yml can add the summary of every node and close it at the end.
+# ServiceNow connection comes from the AAP "snow_demo" credential (SN_HOST,
+# SN_USERNAME, SN_PASSWORD).
+- name: Open ServiceNow incident for shared VLAN configuration
+  hosts: localhost
+  gather_facts: false
+  vars:
+    workflow_id: "{{ awx_workflow_job_id | default(tower_workflow_job_id) | default('n/a') }}"
+    launched_by: "{{ awx_user_name | default(tower_user_name) | default('n/a') }}"
+    demo_tag: "{{ ' [DEMO: ' ~ inject_failure ~ ']' if inject_failure | default('none') != 'none' else '' }}"
+    switches: "{{ query('inventory_hostnames', _group | default('shared_vlan')) }}"
+    snow_description: |-
+      Ansible Automation Platform has STARTED the Shared VLAN segmentation change.
+
+      Switches:            {{ switches | join(', ') if switches else 'cat9kv1, cat9kv2' }} (Catalyst 9000v, IOS-XE)
+      AAP workflow job:    {{ workflow_id }}
+      Launched by:         {{ launched_by }}
+      {% if inject_failure | default('none') != 'none' %}
+      DEMO RUN:            failure injection "{{ inject_failure }}" - this change is expected to
+                           fail and be rolled back automatically
+      {% endif %}
+
+      What is being configured:
+        - Private VLANs on one shared subnet 10.100.100.0/24
+            primary   VLAN 100 SHARED_PRIMARY  (gateway Vlan100 10.100.100.1, promiscuous)
+            isolated  VLAN 101 OT_ISOLATED     host1, host2 - may only reach the gateway
+            community VLAN 102 LAB_COMMUNITY   host3, host4 - may reach each other + gateway
+        - VRF-Lite: RESEARCH (Vlan100, research-srv 10.30.30.0/24) and GUEST (Vlan200)
+          with no route leaking between them
+        - 802.1Q trunk cat9kv1 Gi1/0/1 <-> cat9kv2 Gi1/0/1 carrying VLANs 100,101,102,200
+
+      Planned workflow steps:
+        1. Open ticket     - this incident
+        2. Base config     - back up running config to Gitea (rollback point), hostname,
+                             ip routing, vtp transparent, lldp, banner, interfaces
+           (+ license level network-advantage verified, needed for VRF-Lite)
+        3. Approval        - a human reviews the base config in AAP before segmentation is applied
+        4. Scoped config   - VLANs, trunk, PVLAN host ports, VRFs, SVIs, promiscuous mapping
+        5. Validate        - ping matrix between endpoints proves isolation is enforced
+        6a. Close ticket   - if validation passes, this incident is closed with a summary
+        6b. Restore        - if any step fails or the approval is denied, both switches are
+                             rolled back to the Gitea backup and this incident is left open
+
+  tasks:
+    - name: Create ServiceNow incident
+      servicenow.itsm.incident:
+        instance:
+          host: "{{ SN_HOST }}"
+          username: "{{ SN_USERNAME }}"
+          password: "{{ SN_PASSWORD }}"
+        state: new
+        impact: medium
+        urgency: medium
+        caller: admin
+        short_description: "Shared VLAN configuration started (PVLAN + VRF-Lite){{ demo_tag }}"
+        description: "{{ snow_description }}"
+      register: snow_var
+
+    - name: Show incident number
+      ansible.builtin.debug:
+        msg:
+          - "ServiceNow instance: {{ SN_HOST }}"
+          - "Incident {{ snow_var.record.number }} opened for the shared VLAN configuration"
+
+    - name: Publish incident number to workflow
+      ansible.builtin.set_stats:
+        data:
+          shared_vlan_ticket: "{{ snow_var.record.number }}"

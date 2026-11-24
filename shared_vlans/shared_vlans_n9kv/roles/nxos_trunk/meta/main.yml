@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: nxos_trunk
+  author: network-demos
+  description: Shared VLAN lab - nxos_trunk
+  license: MIT
+  min_ansible_version: "2.15"
+dependencies: []

@@ -1,0 +1,4 @@
+---
+vrfs: []               # [{name, description}]
+vrf_interfaces: []     # [{name, description, vrf, ipv4, mask}]
+vrf_static_routes: []  # [{vrf, prefix, mask, next_hop}]

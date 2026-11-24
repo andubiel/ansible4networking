@@ -1,0 +1,10 @@
+---
+base_global_lines: []
+base_banner: ""
+base_interfaces: []   # [{name, description, mode: layer2|layer3, enabled}]
+mgmt_vrf: Mgmt-vrf
+mgmt_gateway: ""
+# Catalyst 9000 needs network-advantage for VRF-Lite ("% Feature is not supported" on
+# "vrf definition" under network-essentials). Changing it requires a reload. "" = don't manage.
+base_license_level: network-advantage
+base_reload_wait_retries: 60   # x 20s = up to 20 minutes for the switch to come back

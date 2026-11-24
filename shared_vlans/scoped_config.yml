@@ -1,0 +1,87 @@
+---
+# Scoped segmentation config for the shared VLAN lab:
+#   1. Regular VLANs + 802.1Q trunks + access ports  (ios_trunk)
+#   2. Private VLAN domain + isolated/community host ports  (ios_pvlan)
+#   3. VRF-Lite contexts, SVIs and routed ports  (ios_vrf_lite)
+#   4. PVLAN promiscuous mapping on the gateway SVI  (ios_pvlan/promiscuous)
+# Run base_config.yml first (ip routing and vtp mode transparent are required).
+- name: Shared VLAN lab - scoped configuration
+  hosts: "{{ _group | default('shared_vlan') }}"
+  gather_facts: false
+
+  tasks:
+    - name: Backup running config before scoped changes
+      cisco.ios.ios_config:
+        backup: true
+      tags: [backup]
+
+    - name: VLANs and 802.1Q trunking
+      ansible.builtin.include_role:
+        name: ios_trunk
+        apply:
+          tags: [trunk]
+      tags: [trunk]
+
+    - name: Private VLANs
+      ansible.builtin.include_role:
+        name: ios_pvlan
+        apply:
+          tags: [pvlan]
+      tags: [pvlan]
+
+    - name: VRF-Lite
+      ansible.builtin.include_role:
+        name: ios_vrf_lite
+        apply:
+          tags: [vrf]
+      tags: [vrf]
+
+    - name: PVLAN promiscuous gateway mapping
+      ansible.builtin.include_role:
+        name: ios_pvlan
+        tasks_from: promiscuous.yml
+        apply:
+          tags: [pvlan]
+      tags: [pvlan]
+
+    - name: Save running config to startup when modified
+      cisco.ios.ios_config:
+        save_when: modified
+      tags: [always]
+
+    # Written to <host>_scoped.cfg so the base_config rollback point (<host>.cfg)
+    # is kept for shared_vlan_restore
+    - name: Push post-change backups to shared_vlans/backups on master
+      ansible.builtin.include_role:
+        name: git_backup
+        apply:
+          tags: [git_backup]
+      vars:
+        git_backup_file: "{{ inventory_hostname }}_scoped.cfg"
+      tags: [git_backup]
+
+    - name: Collect PVLAN / VRF state
+      cisco.ios.ios_command:
+        commands:
+          - show vlan private-vlan
+          - show vrf
+          - show ip interface brief
+          - show interfaces trunk
+      register: scoped_state
+      tags: [verify]
+
+    - name: Show PVLAN / VRF state
+      ansible.builtin.debug:
+        msg: "{{ scoped_state.stdout_lines }}"
+      tags: [verify]
+
+    - name: Publish scoped config result to the workflow
+      ansible.builtin.set_stats:
+        data:
+          scoped_results: "{{ {inventory_hostname: {
+            'status': 'success',
+            'vlans': (pvlan_primary + pvlan_secondary + vlans) | map(attribute='vlan_id') | sort | join(','),
+            'vrfs': vrfs | map(attribute='name') | list,
+            'pvlan_host_ports': pvlan_host_ports | length,
+            'backup': 'master:shared_vlans/backups/' ~ inventory_hostname ~ '_scoped.cfg'}} }}"
+      tags: [always]

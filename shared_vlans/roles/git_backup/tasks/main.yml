@@ -1,0 +1,46 @@
+---
+# Same flow as network_backups_git: clone repo -> back up running config into it -> publish.
+# Pushes each switch's running config to <repo>/{{ git_backup_dir }}/{{ git_backup_file }} on master.
+- name: Clone repository on branch {{ git_backup_branch }}
+  ansible.scm.git_retrieve:
+    origin:
+      url: "{{ git_backup_repo_url }}"
+    parent_directory: "{{ git_backup_parent_dir }}"
+    branch:
+      name: "{{ git_backup_branch }}"
+      duplicate_detection: false
+    timeout: 240
+  register: git_backup_repo
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+
+- name: Ensure backup directory exists
+  ansible.builtin.file:
+    path: "{{ git_backup_repo.path }}/{{ git_backup_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  run_once: true
+
+- name: Backup running config into the repository
+  cisco.ios.ios_config:
+    backup: true
+    backup_options:
+      dir_path: "{{ git_backup_repo.path }}/{{ git_backup_dir }}"
+      filename: "{{ git_backup_file }}"
+  tags: [backup]
+
+- name: Commit and push backups to {{ git_backup_branch }}
+  ansible.scm.git_publish:
+    path: "{{ git_backup_repo.path }}"
+    include:
+      - "{{ git_backup_dir }}"
+    commit:
+      message: "{{ git_backup_commit_message }}"
+    user:
+      name: "{{ git_backup_user_name }}"
+      email: "{{ git_backup_user_email }}"
+    timeout: 240
+  delegate_to: localhost
+  run_once: true

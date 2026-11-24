@@ -1,0 +1,55 @@
+---
+# Access switch hosting the PVLAN endpoints
+hostname: n9kv2
+
+base_interfaces:
+  - name: Ethernet1/1
+    description: TRUNK to n9kv1 Eth1/1
+    mode: layer2
+    enabled: true
+  - name: Ethernet1/2
+    description: host1 (isolated)
+    mode: layer2
+    enabled: true
+  - name: Ethernet1/3
+    description: host2 (isolated)
+    mode: layer2
+    enabled: true
+  - name: Ethernet1/4
+    description: host3 (community)
+    mode: layer2
+    enabled: true
+  - name: Ethernet1/5
+    description: host4 (community)
+    mode: layer2
+    enabled: true
+  - name: Ethernet1/6
+    description: guest1 (guest)
+    mode: layer2
+    enabled: true
+
+trunk_ports:
+  - name: Ethernet1/1
+    allowed_vlans: "100-102,200"
+
+access_ports:
+  - name: Ethernet1/6
+    vlan: 200
+
+pvlan_host_ports:
+  - name: Ethernet1/2
+    primary: 100
+    secondary: 101
+  - name: Ethernet1/3
+    primary: 100
+    secondary: 101
+  - name: Ethernet1/4
+    primary: 100
+    secondary: 102
+  - name: Ethernet1/5
+    primary: 100
+    secondary: 102
+
+vrfs: []
+vrf_interfaces: []
+pvlan_svi_mappings: []
