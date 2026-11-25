@@ -200,7 +200,7 @@ port forwarding: **cat9kv1 → `container_lab:2230`**, **cat9kv2 → `container_
 | Object | Name | Details |
 |---|---|---|
 | Hosts | `cat9kv1`, `cat9kv2` | In **Workshop Inventory**. `ansible_host: '{{ container_lab }}'`, `ansible_port` 2230 / 2231, `cisco.ios.ios` over `network_cli` |
-| Inventory var | `container_lab` | Defined on Workshop Inventory: **20.51.209.242** (containerlab host) |
+| Inventory var | `container_lab` | Defined on Workshop Inventory: **10.10.10.10** (containerlab host) |
 | Group | `shared_vlan` | cat9kv1 + cat9kv2; the playbooks target this group (`_group` overrides) |
 | Credential | `Shared VLAN cat9kv Credential` | Machine credential for the switches (admin / admin@123) |
 | Credential | `Gitea Credential` | Existing; injects `username`, `password`, `email` used by `git_backup` |

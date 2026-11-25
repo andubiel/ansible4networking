@@ -4,7 +4,7 @@
 # The containerlab host is remote from AAP. Each cat9kv is reached on the containerlab
 # host through its port mapping (cat9kv1 -> 2230, cat9kv2 -> 2231). ansible_host is the
 # literal '{{ container_lab }}', resolved at job runtime from the Workshop Inventory
-# variable container_lab (20.51.209.242). !unsafe keeps it from being templated here.
+# variable container_lab (10.10.10.10). !unsafe keeps it from being templated here.
 controller_components:
   - projects
   - credential_types

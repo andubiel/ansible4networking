@@ -12,7 +12,7 @@ shared_vlan:
       ansible_host: "{{ container_lab }}"
       ansible_port: 2231
   vars:
-    container_lab: 20.51.209.242   # containerlab host (same var as Workshop Inventory)
+    container_lab: 10.10.10.10   # containerlab host (same var as Workshop Inventory)
     # WARNING: LAB-ONLY default password (admin@123). Not for production. Change it here and in the
     # switch startup configs, or keep real credentials only in AAP / Ansible Vault, never in git.
     ansible_user: admin
