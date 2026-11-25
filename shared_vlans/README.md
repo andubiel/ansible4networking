@@ -202,7 +202,7 @@ port forwarding: **cat9kv1 → `container_lab:2230`**, **cat9kv2 → `container_
 | Hosts | `cat9kv1`, `cat9kv2` | In **Workshop Inventory**. `ansible_host: '{{ container_lab }}'`, `ansible_port` 2230 / 2231, `cisco.ios.ios` over `network_cli` |
 | Inventory var | `container_lab` | Defined on Workshop Inventory: **10.10.10.10** (containerlab host) |
 | Group | `shared_vlan` | cat9kv1 + cat9kv2; the playbooks target this group (`_group` overrides) |
-| Credential | `Shared VLAN cat9kv Credential` | Machine credential for the switches (admin / admin@123) |
+| Credential | `Shared VLAN cat9kv Credential` | Machine credential for the switches (user `admin`, password set in `setup.yml`) |
 | Credential | `Gitea Credential` | Existing; injects `username`, `password`, `email` used by `git_backup` |
 | Credential | `snow_demo` | Existing; injects `SN_HOST`, `SN_USERNAME`, `SN_PASSWORD` for ServiceNow |
 | Credential | `azure` | Existing; SSH key for `azureuser` on the containerlab host |
@@ -355,12 +355,15 @@ open with work notes if anything failed or a restore ran.
 
 ### Running from the CLI
 
+`inventory.yml` doesn't store the switch password, so `-k` prompts for it (or keep
+`ansible_password` in Ansible Vault).
+
 ```bash
-ansible-playbook -i inventory.yml base_config.yml
-ansible-playbook -i inventory.yml scoped_config.yml
-ansible-playbook -i inventory.yml scoped_config.yml --tags pvlan          # one step
-ansible-playbook -i inventory.yml scoped_config.yml --check --diff        # dry run
-ansible-playbook -i inventory.yml base_config.yml --skip-tags git_backup  # no Gitea creds
+ansible-playbook -i inventory.yml -k base_config.yml
+ansible-playbook -i inventory.yml -k scoped_config.yml
+ansible-playbook -i inventory.yml -k scoped_config.yml --tags pvlan          # one step
+ansible-playbook -i inventory.yml -k scoped_config.yml --check --diff        # dry run
+ansible-playbook -i inventory.yml -k base_config.yml --skip-tags git_backup  # no Gitea creds
 ```
 
 ---
@@ -476,11 +479,11 @@ show interfaces trunk
 
 - `shared_vlan.clab.yml` references `configs/cat9kv1/startup.cfg` and `configs/cat9kv2/startup.cfg`.
   Like `ztna`, these files live **on the containerlab host**, not in this repo. They must create
-  the AAP login used by `Shared VLAN cat9kv Credential`, at minimum (`admin@123` is a **lab-only**
-  default; don't reuse it outside the lab):
+  the AAP login used by `Shared VLAN cat9kv Credential`, at minimum. Replace `<password>` with the
+  password set on that credential in `setup.yml`:
   ```
   hostname cat9kv1
-  username admin privilege 15 secret admin@123
+  username admin privilege 15 secret <password>
   ip ssh version 2
   line vty 0 4
    login local

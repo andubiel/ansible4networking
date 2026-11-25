@@ -14,10 +14,9 @@ name: shared_vlan_n9kv
 # Containerlab ethN on an n9kv maps to Ethernet1/N. Links are kept contiguous per node.
 # Lab name, SSH ports (2232/2233) and mgmt IPs (172.20.20.81-88) differ from the cat9kv
 # lab (shared_vlan, 2230/2231, .71-.78) so both can run on the same containerlab host.
-# WARNING: LAB-ONLY default password (admin@123). Not for production. Change it here and in the
-# switch startup configs, or keep real credentials only in AAP / Ansible Vault, never in git.
 # startup-config files live on the containerlab host and must create the AAP login:
-#   username admin password admin@123 role network-admin
+#   username admin password <password> role network-admin
+# <password> must match the "Shared VLAN n9kv Credential" Machine credential in setup.yml.
 #
 # NOTE: n9kv's emulated data plane does not forward private-VLAN traffic, so
 # shared_vlan_n9kv_validate fails "isolated -> gateway" and the workflow restores.

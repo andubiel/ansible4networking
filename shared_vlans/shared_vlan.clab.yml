@@ -15,10 +15,9 @@ name: shared_vlan
 # Keep each cat9kv's links contiguous (eth1, eth2, ...): a gap (e.g. eth1 + eth3) makes
 # vrnetlab assign two NICs to the same PCI slot and qemu fails to start
 # ("PCI: slot 4 function 0 not available" / "Unable to connect to qemu monitor").
-# WARNING: LAB-ONLY default password (admin@123). Not for production. Change it here and in the
-# switch startup configs, or keep real credentials only in AAP / Ansible Vault, never in git.
 # startup-config files live on the containerlab host (same as ztna/ztna.clab.yml) and
-# must create the AAP login: username admin privilege 15 secret admin@123
+# must create the AAP login: username admin privilege 15 secret <password>
+# <password> must match the "Shared VLAN cat9kv Credential" Machine credential in setup.yml.
 topology:
   kinds:
     cisco_cat9kv:

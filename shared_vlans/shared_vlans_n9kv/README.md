@@ -87,7 +87,7 @@ shared_vlans_n9kv/
 |---|---|
 | Hosts (Workshop Inventory) | `n9kv1` (`'{{ container_lab }}'`:2232), `n9kv2` (:2233), `cisco.nxos.nxos` |
 | Group | `shared_vlan_n9kv` |
-| Credential | `Shared VLAN n9kv Credential` (Machine, admin / admin@123) + existing `Gitea Credential`, `snow_demo`, `azure` |
+| Credential | `Shared VLAN n9kv Credential` (Machine, user `admin`, password set in `setup.yml`) + existing `Gitea Credential`, `snow_demo`, `azure` |
 | Job templates | `shared_vlan_n9kv_open`, `Shared-VLAN-n9kv-Base-Config`, `Shared-VLAN-n9kv-Scoped-Config`, `shared_vlan_n9kv_validate`, `shared_vlan_n9kv_restore`, `shared_vlan_n9kv_closed` |
 | Approval node | `Shared-VLAN-n9kv-Approval` |
 | Workflow | `Shared-VLAN-n9kv-Workflow` (survey: `inject_failure` = `none` / `base_error`) |
@@ -164,7 +164,8 @@ cat9kv lab.
 
 ```bash
 # on the containerlab host; configs/n9kv1|2/startup.cfg must exist there and create
-#   username admin password admin@123 role network-admin   (lab-only default password)
+#   username admin password <password> role network-admin
+#   (<password> = the "Shared VLAN n9kv Credential" password in setup.yml)
 sudo containerlab deploy -t shared_vlan_n9kv.clab.yml
 ```
 

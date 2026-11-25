@@ -13,7 +13,6 @@ shared_vlan:
       ansible_port: 2231
   vars:
     container_lab: 10.10.10.10   # containerlab host (same var as Workshop Inventory)
-    # WARNING: LAB-ONLY default password (admin@123). Not for production. Change it here and in the
-    # switch startup configs, or keep real credentials only in AAP / Ansible Vault, never in git.
+    # No password here: AAP jobs use the "Shared VLAN cat9kv Credential" Machine credential (setup.yml).
+    # For local runs, pass -k to be prompted, or store ansible_password in Ansible Vault.
     ansible_user: admin
-    ansible_password: admin@123   # set by configs/cat9kvX/startup.cfg on the clab host
